@@ -1,0 +1,230 @@
+/* =========================
+   STUDENT DASHBOARD
+========================= */
+
+.dashboard {
+    display: flex;
+    min-height: 100vh;
+    background: #f6f3fb;
+}
+
+/* SIDEBAR */
+
+.sidebar {
+    width: 240px;
+    background: #4b2e83;
+    color: white;
+    padding: 25px 15px;
+    display: flex;
+    flex-direction: column;
+}
+
+.logo {
+    font-size: 21px;
+    font-weight: bold;
+    padding: 10px;
+    margin-bottom: 30px;
+}
+
+.sidebar nav {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.sidebar a {
+    color: white;
+    text-decoration: none;
+    padding: 13px 12px;
+    border-radius: 8px;
+    font-size: 14px;
+}
+
+.sidebar a:hover,
+.sidebar a.active {
+    background: #6c4bb3;
+}
+
+.logout {
+    margin-top: auto;
+}
+
+
+/* MAIN CONTENT */
+
+.main-content {
+    flex: 1;
+    padding: 30px 40px;
+}
+
+
+/* TOP BAR */
+
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+}
+
+.topbar h1 {
+    color: #333;
+    font-size: 26px;
+}
+
+.topbar p {
+    color: #777;
+    margin-top: 5px;
+}
+
+.user-info {
+    color: #555;
+}
+
+
+/* WELCOME */
+
+.welcome {
+    background: white;
+    padding: 25px;
+    border-radius: 15px;
+    margin-bottom: 25px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+}
+
+.welcome h2 {
+    color: #4b2e83;
+    margin-bottom: 8px;
+}
+
+.welcome p {
+    color: #777;
+}
+
+
+/* STATISTICS */
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    margin-bottom: 30px;
+}
+
+.stat-card {
+    background: white;
+    padding: 22px;
+    border-radius: 15px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+}
+
+.stat-icon {
+    font-size: 28px;
+}
+
+.stat-card h3 {
+    font-size: 24px;
+    color: #4b2e83;
+}
+
+.stat-card p {
+    color: #777;
+    font-size: 13px;
+    margin-top: 4px;
+}
+
+
+/* EVENTS */
+
+.events-section {
+    background: white;
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.06);
+}
+
+.section-heading {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.section-heading h2 {
+    color: #333;
+}
+
+.section-heading a {
+    color: #5d3aa5;
+    text-decoration: none;
+    font-size: 14px;
+}
+
+
+/* EVENT CARD */
+
+.event-card {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 18px;
+    border: 1px solid #eee;
+    border-radius: 12px;
+    margin-bottom: 15px;
+}
+
+.event-date {
+    width: 60px;
+    height: 65px;
+    background: #eee7ff;
+    color: #4b2e83;
+    border-radius: 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.event-date strong {
+    font-size: 22px;
+}
+
+.event-date span {
+    font-size: 11px;
+}
+
+.event-details {
+    flex: 1;
+}
+
+.event-details h3 {
+    color: #333;
+    margin-bottom: 7px;
+}
+
+.event-details p {
+    color: #777;
+    font-size: 13px;
+    margin-top: 3px;
+}
+
+.event-card button {
+    background: #4b2e83;
+    color: white;
+    border: none;
+    padding: 10px 16px;
+    border-radius: 7px;
+    cursor: pointer;
+}
+.event-details-btn {
+    display: inline-block;
+    background: #4b2e83;
+    color: white;
+    padding: 10px 18px;
+    border-radius: 6px;
+    text-decoration: none;
+    font-weight: 600;
+}

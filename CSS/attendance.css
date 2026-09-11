@@ -1,0 +1,471 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background: #f5f6fb;
+    color: #222;
+}
+
+
+/* Header */
+
+header {
+    background: #172554;
+    color: white;
+
+    padding: 18px 40px;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.logo {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.dashboard-link {
+    color: white;
+    text-decoration: none;
+    font-size: 14px;
+}
+
+.dashboard-link:hover {
+    text-decoration: underline;
+}
+
+
+/* Main Page */
+
+.page {
+    min-height: calc(100vh - 70px);
+    padding: 40px 20px;
+}
+
+.container {
+    max-width: 850px;
+    margin: auto;
+}
+
+
+/* Back Link */
+
+.back-link {
+    display: inline-block;
+
+    margin-bottom: 25px;
+
+    color: #263a8b;
+    text-decoration: none;
+
+    font-weight: 600;
+}
+
+.back-link:hover {
+    text-decoration: underline;
+}
+
+
+/* Heading */
+
+h1 {
+    color: #172554;
+
+    font-size: 32px;
+
+    margin-bottom: 8px;
+}
+
+.subtitle {
+    color: #666;
+
+    margin-bottom: 30px;
+}
+
+
+/* Event Card */
+
+.event-card {
+    background: white;
+
+    padding: 25px;
+
+    border-radius: 14px;
+
+    margin-bottom: 20px;
+
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+}
+
+.event-badge {
+    display: inline-block;
+
+    background: #eef2ff;
+
+    color: #263a8b;
+
+    padding: 6px 13px;
+
+    border-radius: 20px;
+
+    font-size: 12px;
+
+    font-weight: bold;
+
+    margin-bottom: 12px;
+}
+
+.event-card h2 {
+    color: #1e3a8a;
+
+    font-size: 23px;
+
+    margin-bottom: 20px;
+}
+
+.event-details {
+    display: grid;
+
+    grid-template-columns: repeat(3, 1fr);
+
+    gap: 15px;
+}
+
+.event-details div {
+    background: #f8f9ff;
+
+    padding: 13px;
+
+    border-radius: 8px;
+}
+
+.event-details span {
+    display: block;
+
+    color: #777;
+
+    font-size: 12px;
+
+    margin-bottom: 5px;
+}
+
+.event-details strong {
+    font-size: 14px;
+
+    color: #333;
+}
+
+
+/* Attendance Card */
+
+.attendance-card {
+    background: white;
+
+    padding: 30px;
+
+    border-radius: 14px;
+
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
+}
+
+.attendance-card h2 {
+    color: #1e3a8a;
+
+    font-size: 22px;
+
+    margin-bottom: 8px;
+}
+
+.instruction {
+    color: #666;
+
+    font-size: 14px;
+
+    margin-bottom: 25px;
+}
+
+
+/* Verification Section */
+
+.verification-section {
+    margin-bottom: 22px;
+}
+
+.verification-section label {
+    display: block;
+
+    font-weight: bold;
+
+    color: #333;
+
+    margin-bottom: 9px;
+}
+
+
+/* File Input */
+
+input[type="file"] {
+    width: 100%;
+
+    padding: 12px;
+
+    border: 1px solid #d1d5db;
+
+    border-radius: 8px;
+
+    background: #fafafa;
+
+    cursor: pointer;
+}
+
+.help-text {
+    color: #777;
+
+    font-size: 12px;
+
+    margin-top: 7px;
+}
+
+
+/* Location */
+
+.location-box {
+    display: flex;
+
+    justify-content: space-between;
+
+    align-items: center;
+
+    gap: 15px;
+
+    background: #f8f9ff;
+
+    padding: 14px;
+
+    border-radius: 8px;
+}
+
+.location-status {
+    color: #777;
+
+    font-size: 14px;
+}
+
+.location-btn {
+    border: none;
+
+    background: #263a8b;
+
+    color: white;
+
+    padding: 9px 15px;
+
+    border-radius: 7px;
+
+    cursor: pointer;
+
+    font-weight: 600;
+}
+
+.location-btn:hover {
+    background: #1d2f73;
+}
+
+
+/* Time Status */
+
+.status-box {
+    background: #f8f9ff;
+
+    padding: 14px;
+
+    border-radius: 8px;
+
+    color: #777;
+
+    font-size: 14px;
+}
+
+
+/* AI Section */
+
+.ai-section {
+    display: flex;
+
+    align-items: center;
+
+    gap: 15px;
+
+    background: #eef2ff;
+
+    padding: 18px;
+
+    border-radius: 10px;
+
+    margin-top: 25px;
+
+    margin-bottom: 25px;
+}
+
+.ai-icon {
+    font-size: 30px;
+}
+
+.ai-section h3 {
+    color: #263a8b;
+
+    font-size: 16px;
+
+    margin-bottom: 5px;
+}
+
+.ai-section p {
+    color: #555;
+
+    font-size: 13px;
+
+    line-height: 1.5;
+}
+
+
+/* Verify Button */
+
+.verify-btn {
+    width: 100%;
+
+    padding: 14px;
+
+    border: none;
+
+    border-radius: 8px;
+
+    background: #263a8b;
+
+    color: white;
+
+    font-size: 16px;
+
+    font-weight: bold;
+
+    cursor: pointer;
+}
+
+.verify-btn:hover {
+    background: #1d2f73;
+}
+
+
+/* Result */
+
+.result-box {
+    display: flex;
+
+    align-items: center;
+
+    gap: 15px;
+
+    background: #ecfdf5;
+
+    border: 1px solid #bbf7d0;
+
+    padding: 18px;
+
+    border-radius: 10px;
+
+    margin-top: 25px;
+}
+
+.result-icon {
+    width: 42px;
+    height: 42px;
+
+    border-radius: 50%;
+
+    background: #16a34a;
+
+    color: white;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    font-size: 22px;
+
+    font-weight: bold;
+}
+
+.result-box h3 {
+    color: #166534;
+
+    font-size: 16px;
+
+    margin-bottom: 4px;
+}
+
+.result-box p {
+    color: #555;
+
+    font-size: 13px;
+}
+
+
+/* Note */
+
+.note {
+    background: #fff7ed;
+
+    color: #9a3412;
+
+    padding: 15px;
+
+    border-radius: 9px;
+
+    margin-top: 20px;
+
+    font-size: 13px;
+
+    line-height: 1.5;
+}
+
+
+/* Mobile */
+
+@media (max-width: 650px) {
+
+    header {
+        padding: 16px 20px;
+    }
+
+    .page {
+        padding: 30px 15px;
+    }
+
+    h1 {
+        font-size: 27px;
+    }
+
+    .attendance-card {
+        padding: 22px;
+    }
+
+    .event-details {
+        grid-template-columns: 1fr;
+    }
+
+    .location-box {
+        flex-direction: column;
+
+        align-items: stretch;
+    }
+
+    .location-btn {
+        width: 100%;
+    }
+}

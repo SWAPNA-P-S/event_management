@@ -1,0 +1,278 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    background: #f5f6fb;
+    color: #222;
+}
+
+
+/* Header */
+
+header {
+    background: #172554;
+    color: white;
+
+    padding: 18px 40px;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.logo {
+    font-size: 24px;
+    font-weight: bold;
+}
+
+.dashboard-link {
+    color: white;
+    text-decoration: none;
+    font-size: 14px;
+}
+
+.dashboard-link:hover {
+    text-decoration: underline;
+}
+
+
+/* Main Page */
+
+.page {
+    min-height: calc(100vh - 70px);
+    padding: 40px 20px;
+}
+
+.container {
+    max-width: 700px;
+    margin: auto;
+}
+
+
+/* Back Link */
+
+.back-link {
+    display: inline-block;
+
+    margin-bottom: 25px;
+
+    color: #263a8b;
+    text-decoration: none;
+
+    font-weight: 600;
+}
+
+.back-link:hover {
+    text-decoration: underline;
+}
+
+
+/* Heading */
+
+h1 {
+    color: #172554;
+    font-size: 32px;
+    margin-bottom: 8px;
+}
+
+.subtitle {
+    color: #666;
+    margin-bottom: 30px;
+}
+
+
+/* QR Card */
+
+.qr-card {
+    background: white;
+
+    border-radius: 16px;
+
+    padding: 35px;
+
+    text-align: center;
+
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08);
+}
+
+
+/* Event Badge */
+
+.event-badge {
+    display: inline-block;
+
+    background: #eef2ff;
+    color: #263a8b;
+
+    padding: 6px 14px;
+
+    border-radius: 20px;
+
+    font-size: 12px;
+    font-weight: bold;
+
+    margin-bottom: 15px;
+}
+
+
+/* Event Name */
+
+.qr-card h2 {
+    color: #1e3a8a;
+
+    font-size: 24px;
+
+    margin-bottom: 10px;
+}
+
+.event-date {
+    color: #666;
+
+    margin-bottom: 25px;
+}
+
+
+/* QR Code */
+
+.qr-container {
+    display: flex;
+    justify-content: center;
+
+    margin: 10px 0 20px;
+}
+
+.qr-placeholder {
+    width: 210px;
+    height: 210px;
+
+    background:
+        linear-gradient(90deg, #111 10px, transparent 10px) 0 0 / 30px 30px,
+        linear-gradient(#111 10px, transparent 10px) 0 0 / 30px 30px,
+        linear-gradient(45deg, transparent 45%, #111 45%, #111 55%, transparent 55%);
+
+    border: 12px solid white;
+
+    outline: 2px solid #ddd;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.qr-placeholder span {
+    background: white;
+
+    padding: 8px 12px;
+
+    font-size: 22px;
+
+    font-weight: bold;
+
+    color: #172554;
+}
+
+
+/* Scan Text */
+
+.scan-text {
+    color: #555;
+
+    font-size: 14px;
+
+    margin-bottom: 25px;
+}
+
+
+/* Student Details */
+
+.student-details {
+    display: grid;
+
+    grid-template-columns: repeat(2, 1fr);
+
+    gap: 12px;
+
+    text-align: left;
+
+    margin-top: 20px;
+}
+
+.detail {
+    background: #f8f9ff;
+
+    padding: 14px;
+
+    border-radius: 8px;
+}
+
+.detail span {
+    display: block;
+
+    color: #777;
+
+    font-size: 12px;
+
+    margin-bottom: 5px;
+}
+
+.detail strong {
+    color: #333;
+
+    font-size: 14px;
+}
+
+.confirmed {
+    color: #15803d !important;
+}
+
+
+/* Note */
+
+.note {
+    margin-top: 25px;
+
+    padding: 12px;
+
+    background: #fff7ed;
+
+    color: #9a3412;
+
+    border-radius: 8px;
+
+    font-size: 13px;
+}
+
+
+/* Mobile */
+
+@media (max-width: 600px) {
+
+    header {
+        padding: 16px 20px;
+    }
+
+    .page {
+        padding: 30px 15px;
+    }
+
+    h1 {
+        font-size: 27px;
+    }
+
+    .qr-card {
+        padding: 25px 18px;
+    }
+
+    .student-details {
+        grid-template-columns: 1fr;
+    }
+
+    .qr-placeholder {
+        width: 180px;
+        height: 180px;
+    }
+}
