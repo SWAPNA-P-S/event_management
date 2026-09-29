@@ -8,10 +8,17 @@ if ($_SERVER["REQUEST_METHOD"] !== "POST") {
 }
 
 $user_id = $_SESSION["user_id"];
-$event_id = $_POST["event_id"];
+
+if (!isset($_POST["event_id"]) || !is_numeric($_POST["event_id"])) {
+    die("Invalid event.");
+}
+
+$event_id = (int) $_POST["event_id"];
 
 
-/* Check whether already registered */
+/* =========================================================
+   CHECK WHETHER USER IS ALREADY REGISTERED
+   ========================================================= */
 
 $check = $conn->prepare(
     "SELECT registration_id
@@ -159,12 +166,24 @@ if ($check_result->num_rows > 0) {
 $check->close();
 
 
-/* Get event fee */
+/* =========================================================
+   GET ONLY OFFICIALLY APPROVED PUBLIC EVENT
+   ========================================================= */
 
 $event_stmt = $conn->prepare(
-    "SELECT fee, event_name
-     FROM events
-     WHERE event_id = ?"
+    "SELECT
+        e.event_id,
+        e.event_name,
+        e.fee
+     FROM events e
+     INNER JOIN event_brochures eb
+        ON e.event_id = eb.event_id
+     WHERE e.event_id = ?
+       AND e.request_status = 'approved'
+       AND eb.hod_status = 'approved'
+       AND eb.status = 'approved'
+     ORDER BY eb.brochure_id DESC
+     LIMIT 1"
 );
 
 $event_stmt->bind_param("i", $event_id);
@@ -173,27 +192,38 @@ $event_stmt->execute();
 $event_result = $event_stmt->get_result();
 
 if ($event_result->num_rows === 0) {
-    die("Event not found.");
+
+    $event_stmt->close();
+    $conn->close();
+
+    die("This event is not currently available for registration.");
 }
 
 $event_data = $event_result->fetch_assoc();
 
-$event_fee = $event_data["fee"];
+$event_fee = (float) $event_data["fee"];
 $event_name = $event_data["event_name"];
 
 $event_stmt->close();
 
 
-/* Decide registration type automatically */
+/* =========================================================
+   DECIDE REGISTRATION TYPE AUTOMATICALLY
+   ========================================================= */
 
 if ($event_fee > 0) {
+
     $registration_type = "paid";
+
 } else {
+
     $registration_type = "free";
 }
 
 
-/* Insert registration */
+/* =========================================================
+   INSERT REGISTRATION
+   ========================================================= */
 
 $stmt = $conn->prepare(
     "INSERT INTO registrations
@@ -209,12 +239,18 @@ $stmt->bind_param(
 );
 
 
+/* =========================================================
+   REGISTRATION SUCCESS
+   ========================================================= */
+
 if ($stmt->execute()) {
 
     $registration_id = $stmt->insert_id;
 
 
-    /* Paid event */
+    /* =====================================================
+       PAID EVENT
+       ===================================================== */
 
     if ($event_fee > 0) {
 
@@ -223,11 +259,12 @@ if ($stmt->execute()) {
         );
 
         exit();
-
     }
 
 
-    /* Free event */
+    /* =====================================================
+       FREE EVENT
+       ===================================================== */
 
     else {
 

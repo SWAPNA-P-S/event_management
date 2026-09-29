@@ -1,1502 +1,1377 @@
 <?php
-
 session_start();
+include "../db.php";
 
-if (!isset($_SESSION["user_id"]) || $_SESSION["role"] !== "admin") {
+/* =========================================================
+   ADMIN / HOD LOGIN CHECK
+========================================================= */
+
+if (!isset($_SESSION["user_id"])) {
     header("Location: ../login.html");
     exit();
 }
 
-require_once "../db.php";
+if (
+    !isset($_SESSION["role"]) ||
+    $_SESSION["role"] !== "admin"
+) {
+    echo "<script>
+            alert('Access denied.');
+            window.location.href='../student_dashboard.php';
+          </script>";
+    exit();
+}
 
-$admin_name = $_SESSION["user_name"] ?? "Admin";
+/* =========================================================
+   GET ADMIN DETAILS
+========================================================= */
 
+$admin_id = (int) $_SESSION["user_id"];
+$admin_name = $_SESSION["user_name"] ?? "Department Admin";
+$admin_department = "";
 
-/* =========================
+$admin_stmt = $conn->prepare(
+    "SELECT name, department
+     FROM users
+     WHERE id = ?
+     LIMIT 1"
+);
+
+$admin_stmt->bind_param("i", $admin_id);
+$admin_stmt->execute();
+
+$admin_result = $admin_stmt->get_result();
+
+if ($admin_result->num_rows === 1) {
+    $admin_data = $admin_result->fetch_assoc();
+
+    $admin_name = $admin_data["name"];
+    $admin_department = $admin_data["department"];
+}
+
+$admin_stmt->close();
+
+/* =========================================================
    DASHBOARD COUNTS
-========================= */
+========================================================= */
 
-// Total Events
-$total_events = 0;
+$pending_event_requests = 0;
+$pending_organizer_requests = 0;
+$pending_organizer_request_id = 0;
+$pending_event_request_id = 0;
+$pending_payments = 0;
+$pending_brochures = 0;
 
-$result = $conn->query("
-    SELECT COUNT(*) AS total
-    FROM events
-");
+/* =========================================================
+   PENDING EVENT REQUESTS
+========================================================= */
 
-if ($result) {
-    $row = $result->fetch_assoc();
-    $total_events = $row["total"];
+$event_stmt = $conn->prepare(
+    "SELECT COUNT(*) AS total
+     FROM events
+     WHERE request_status = 'pending'"
+);
+
+$event_stmt->execute();
+
+$event_result = $event_stmt->get_result();
+
+if ($event_row = $event_result->fetch_assoc()) {
+    $pending_event_requests = (int) $event_row["total"];
 }
 
+$event_stmt->close();
 
-// Pending Event Requests
-$pending_requests = 0;
+/* =========================================================
+   GET ONE PENDING EVENT REQUEST ID
+   FIX FOR INVALID EVENT REQUEST
+========================================================= */
 
-$result = $conn->query("
-    SELECT COUNT(*) AS total
-    FROM events
-    WHERE request_status = 'pending'
-");
+$event_id_stmt = $conn->prepare(
+    "SELECT event_id
+     FROM events
+     WHERE request_status = 'pending'
+     ORDER BY event_id DESC
+     LIMIT 1"
+);
 
-if ($result) {
-    $row = $result->fetch_assoc();
-    $pending_requests = $row["total"];
+$event_id_stmt->execute();
+
+$event_id_result = $event_id_stmt->get_result();
+
+if ($event_id_row = $event_id_result->fetch_assoc()) {
+    $pending_event_request_id = (int) $event_id_row["event_id"];
 }
 
+$event_id_stmt->close();
 
-// Approved Events
-$approved_events = 0;
+/* =========================================================
+   PENDING ORGANIZER REQUESTS
+========================================================= */
 
-$result = $conn->query("
-    SELECT COUNT(*) AS total
-    FROM events
-    WHERE request_status = 'approved'
-");
+$organizer_stmt = $conn->prepare(
+    "SELECT COUNT(*) AS total
+     FROM organizer_requests
+     WHERE status = 'pending'"
+);
 
-if ($result) {
-    $row = $result->fetch_assoc();
-    $approved_events = $row["total"];
+$organizer_stmt->execute();
+
+$organizer_result = $organizer_stmt->get_result();
+
+if ($organizer_row = $organizer_result->fetch_assoc()) {
+    $pending_organizer_requests = (int) $organizer_row["total"];
 }
 
+$organizer_stmt->close();
 
-// Total Users
-$total_users = 0;
+/* =========================================================
+   GET ONE PENDING ORGANIZER REQUEST ID
+========================================================= */
 
-$result = $conn->query("
-    SELECT COUNT(*) AS total
-    FROM users
-");
+$organizer_id_stmt = $conn->prepare(
+    "SELECT request_id
+     FROM organizer_requests
+     WHERE status = 'pending'
+     ORDER BY request_id DESC
+     LIMIT 1"
+);
 
-if ($result) {
-    $row = $result->fetch_assoc();
-    $total_users = $row["total"];
+$organizer_id_stmt->execute();
+
+$organizer_id_result = $organizer_id_stmt->get_result();
+
+if ($organizer_id_row = $organizer_id_result->fetch_assoc()) {
+    $pending_organizer_request_id =
+        (int) $organizer_id_row["request_id"];
 }
 
+$organizer_id_stmt->close();
 
-/* =========================
-   ORGANIZER / TEAM REQUEST COUNT
-========================= */
+/* =========================================================
+   PENDING PAYMENTS
+========================================================= */
 
-$pending_team_requests = 0;
+$payment_stmt = $conn->prepare(
+    "SELECT COUNT(*) AS total
+     FROM payments
+     WHERE status = 'pending'"
+);
 
-$result = $conn->query("
-    SELECT COUNT(*) AS total
-    FROM organizer_requests
-    WHERE status = 'pending'
-");
+$payment_stmt->execute();
 
-if ($result) {
-    $row = $result->fetch_assoc();
-    $pending_team_requests = $row["total"];
+$payment_result = $payment_stmt->get_result();
+
+if ($payment_row = $payment_result->fetch_assoc()) {
+    $pending_payments = (int) $payment_row["total"];
 }
 
+$payment_stmt->close();
 
-/* =========================
-   REPORT COUNTS
-========================= */
+/* =========================================================
+   PENDING BROCHURES
+========================================================= */
 
-$pending_reports = 0;
-$correction_reports = 0;
-$approved_reports = 0;
+$brochure_stmt = $conn->prepare(
+    "SELECT COUNT(*) AS total
+     FROM event_brochures
+     WHERE status = 'pending'"
+);
 
-$result = $conn->query("
-    SELECT status, COUNT(*) AS total
-    FROM event_reports
-    GROUP BY status
-");
+$brochure_stmt->execute();
 
-if ($result) {
+$brochure_result = $brochure_stmt->get_result();
 
-    while ($row = $result->fetch_assoc()) {
-
-        if ($row["status"] === "pending") {
-
-            $pending_reports = $row["total"];
-
-        }
-
-        elseif ($row["status"] === "correction_required") {
-
-            $correction_reports = $row["total"];
-
-        }
-
-        elseif ($row["status"] === "approved") {
-
-            $approved_reports = $row["total"];
-
-        }
-    }
+if ($brochure_row = $brochure_result->fetch_assoc()) {
+    $pending_brochures = (int) $brochure_row["total"];
 }
 
+$brochure_stmt->close();
 
-/* =========================
-   ORGANIZER / TEAM REQUESTS
-========================= */
+/* =========================================================
+   RECENT PENDING EVENT REQUESTS
+========================================================= */
 
-$organizer_requests = $conn->query("
-    SELECT
-        r.request_id,
-        r.requested_by,
-        r.team_name,
-        r.reason,
-        r.status,
-        r.created_at,
-        u.name AS leader_name,
-        u.email AS leader_email
-    FROM organizer_requests r
-    LEFT JOIN users u
-        ON r.requested_by = u.id
-    ORDER BY r.request_id DESC
-    LIMIT 10
-");
+$recent_events = [];
 
+$recent_event_stmt = $conn->prepare(
+    "SELECT
+        event_id,
+        event_name,
+        event_date,
+        start_time,
+        venue,
+        request_status
+     FROM events
+     WHERE request_status = 'pending'
+     ORDER BY event_id DESC
+     LIMIT 5"
+);
 
-/* =========================
-   RECENT EVENT REQUESTS
-========================= */
+$recent_event_stmt->execute();
 
-$requests = $conn->query("
-    SELECT
-        e.event_id,
-        e.event_name,
-        e.event_date,
-        e.start_time,
-        e.end_time,
-        e.venue,
-        e.event_type,
-        e.request_status,
-        u.name AS organizer_name
-    FROM events e
-    LEFT JOIN users u
-        ON e.organizer_id = u.id
-    ORDER BY e.event_id DESC
-    LIMIT 10
-");
+$recent_event_result =
+    $recent_event_stmt->get_result();
+
+while ($row = $recent_event_result->fetch_assoc()) {
+    $recent_events[] = $row;
+}
+
+$recent_event_stmt->close();
 
 ?>
 
 <!DOCTYPE html>
-
 <html lang="en">
 
 <head>
 
 <meta charset="UTF-8">
 
-<meta name="viewport"
-      content="width=device-width, initial-scale=1.0">
+<meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+>
 
-<title>Admin Dashboard | EventHub</title>
-
+<title>Admin Dashboard | Event Management System</title>
 
 <style>
 
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-    font-family: Arial, sans-serif;
-}
+/* =========================================================
+   RESET
+========================================================= */
 
+* {
+    box-sizing: border-box;
+}
 
 body {
-    background: #f1f5f9;
-    color: #1e293b;
+    margin: 0;
+    font-family:
+        Arial,
+        Helvetica,
+        sans-serif;
+    background: #f4f7fb;
+    color: #1f2937;
 }
 
-
-/* =========================
+/* =========================================================
    SIDEBAR
-========================= */
+========================================================= */
 
 .sidebar {
-
     position: fixed;
-
     left: 0;
     top: 0;
-
-    width: 240px;
+    width: 250px;
     height: 100vh;
-
-    background: #0f172a;
-
+    background: #172554;
     color: white;
-
     padding: 25px 18px;
-
     overflow-y: auto;
 }
 
-
 .logo {
+    text-align: center;
+    margin-bottom: 30px;
+}
 
+.logo h2 {
+    margin: 0;
     font-size: 22px;
-
-    font-weight: bold;
-
-    color: #60a5fa;
-
-    margin-bottom: 35px;
 }
 
+.logo p {
+    margin: 7px 0 0;
+    font-size: 13px;
+    color: #bfdbfe;
+}
 
-.menu-title {
-
-    font-size: 12px;
-
-    color: #64748b;
-
-    margin: 25px 10px 8px;
-
+.nav-title {
+    font-size: 11px;
     text-transform: uppercase;
+    color: #93c5fd;
+    margin: 20px 12px 8px;
+    letter-spacing: 1px;
 }
 
-
-.sidebar a {
-
-    display: block;
-
-    color: #cbd5e1;
-
+.nav-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
     text-decoration: none;
-
-    padding: 13px 12px;
-
+    color: #e0e7ff;
+    padding: 12px 13px;
     margin-bottom: 6px;
-
     border-radius: 8px;
-
-    transition: 0.2s;
+    font-size: 14px;
+    transition: .2s;
 }
 
-
-.sidebar a:hover,
-.sidebar a.active {
-
+.nav-link:hover {
     background: #1e3a8a;
-
     color: white;
 }
 
+.nav-link.active {
+    background: #2563eb;
+    color: white;
+}
 
-/* =========================
+.badge {
+    margin-left: auto;
+    background: #ef4444;
+    color: white;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: bold;
+}
+
+/* =========================================================
    MAIN
-========================= */
+========================================================= */
 
 .main {
-
-    margin-left: 240px;
-
-    padding: 30px;
+    margin-left: 250px;
+    min-height: 100vh;
 }
 
-
-/* =========================
+/* =========================================================
    TOP BAR
-========================= */
+========================================================= */
 
 .topbar {
-
     background: white;
-
-    padding: 22px 25px;
-
-    border-radius: 12px;
-
-    margin-bottom: 25px;
-
-    box-shadow:
-        0 3px 12px rgba(0,0,0,0.05);
+    padding: 18px 30px;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
 }
-
 
 .topbar h1 {
-
-    font-size: 26px;
-
-    margin-bottom: 6px;
+    margin: 0;
+    color: #172554;
+    font-size: 24px;
 }
-
 
 .topbar p {
-
+    margin: 5px 0 0;
     color: #64748b;
-}
-
-
-/* =========================
-   DASHBOARD CARDS
-========================= */
-
-.cards {
-
-    display: grid;
-
-    grid-template-columns:
-        repeat(4, 1fr);
-
-    gap: 20px;
-
-    margin-bottom: 30px;
-}
-
-
-.card {
-
-    background: white;
-
-    padding: 23px;
-
-    border-radius: 12px;
-
-    box-shadow:
-        0 3px 12px rgba(0,0,0,0.05);
-}
-
-
-.card-title {
-
-    color: #64748b;
-
     font-size: 14px;
-
-    margin-bottom: 12px;
 }
 
+.admin-info {
+    text-align: right;
+}
 
-.card-number {
-
-    font-size: 32px;
-
+.admin-name {
     font-weight: bold;
-
-    color: #1e3a8a;
-}
-
-
-/* =========================
-   REPORT SECTION
-========================= */
-
-.report-section {
-
-    background: white;
-
-    padding: 25px;
-
-    border-radius: 12px;
-
-    margin-bottom: 30px;
-
-    box-shadow:
-        0 3px 12px rgba(0,0,0,0.05);
-}
-
-
-.report-section h2 {
-
-    font-size: 20px;
-
-    margin-bottom: 20px;
-
     color: #172554;
 }
 
-
-.report-cards {
-
-    display: grid;
-
-    grid-template-columns:
-        repeat(3, 1fr);
-
-    gap: 18px;
-}
-
-
-.report-card {
-
-    padding: 20px;
-
-    border-radius: 10px;
-
-    background: #f8fafc;
-
-    border: 1px solid #e2e8f0;
-}
-
-
-.report-card h3 {
-
-    font-size: 14px;
-
+.admin-department {
     color: #64748b;
-
-    margin-bottom: 10px;
+    font-size: 13px;
+    margin-top: 3px;
 }
 
+/* =========================================================
+   CONTENT
+========================================================= */
 
-.report-number {
-
-    font-size: 28px;
-
-    font-weight: bold;
-
-    color: #1e3a8a;
+.content {
+    padding: 30px;
 }
 
+/* =========================================================
+   WELCOME
+========================================================= */
 
-.report-button {
-
-    display: inline-block;
-
-    margin-top: 18px;
-
-    padding: 10px 18px;
-
-    background: #2563eb;
-
+.welcome {
+    background:
+        linear-gradient(
+            135deg,
+            #1e3a8a,
+            #2563eb
+        );
     color: white;
+    padding: 28px;
+    border-radius: 14px;
+    margin-bottom: 25px;
+    box-shadow:
+        0 8px 25px rgba(30, 58, 138, .15);
+}
 
-    text-decoration: none;
+.welcome h2 {
+    margin: 0 0 8px;
+    font-size: 25px;
+}
 
-    border-radius: 7px;
+.welcome p {
+    margin: 0;
+    color: #dbeafe;
+}
 
+/* =========================================================
+   STAT CARDS
+========================================================= */
+
+.stats {
+    display: grid;
+    grid-template-columns:
+        repeat(4, 1fr);
+    gap: 18px;
+    margin-bottom: 28px;
+}
+
+.stat-card {
+    background: white;
+    border-radius: 12px;
+    padding: 22px;
+    box-shadow:
+        0 4px 15px rgba(0,0,0,.06);
+    border: 1px solid #e5e7eb;
+}
+
+.stat-icon {
+    font-size: 27px;
+    margin-bottom: 12px;
+}
+
+.stat-number {
+    font-size: 30px;
+    font-weight: bold;
+    color: #172554;
+}
+
+.stat-title {
+    margin-top: 5px;
+    color: #64748b;
     font-size: 14px;
 }
 
+/* =========================================================
+   SECTION
+========================================================= */
 
-.report-button:hover {
-
-    background: #1d4ed8;
-}
-
-
-/* =========================
-   REQUESTS
-========================= */
-
-.requests {
-
+.section {
     background: white;
-
-    padding: 25px;
-
     border-radius: 12px;
-
+    padding: 24px;
+    margin-bottom: 25px;
     box-shadow:
-        0 3px 12px rgba(0,0,0,0.05);
-
-    overflow-x: auto;
-
-    margin-bottom: 30px;
+        0 4px 15px rgba(0,0,0,.06);
 }
 
-
-.requests-header {
-
+.section-header {
     display: flex;
-
     justify-content: space-between;
-
     align-items: center;
-
     margin-bottom: 20px;
+    gap: 15px;
 }
 
-
-.requests-header h2 {
-
+.section-header h2 {
+    margin: 0;
+    color: #172554;
     font-size: 20px;
 }
 
+/* =========================================================
+   QUICK ACTIONS
+========================================================= */
 
-/* =========================
-   TABLE
-========================= */
-
-table {
-
-    width: 100%;
-
-    border-collapse: collapse;
-
-    min-width: 850px;
+.actions {
+    display: grid;
+    grid-template-columns:
+        repeat(3, 1fr);
+    gap: 15px;
 }
 
-
-th {
-
+.action-card {
+    display: block;
+    text-decoration: none;
+    padding: 20px;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
     background: #f8fafc;
+    transition: .2s;
+}
 
-    color: #475569;
+.action-card:hover {
+    transform: translateY(-2px);
+    border-color: #2563eb;
+    background: #eff6ff;
+}
 
+.action-icon {
+    font-size: 28px;
+    margin-bottom: 10px;
+}
+
+.action-title {
+    font-weight: bold;
+    color: #172554;
+    margin-bottom: 5px;
+}
+
+.action-description {
     font-size: 13px;
-
-    text-align: left;
-
-    padding: 14px 12px;
-
-    border-bottom:
-        1px solid #e2e8f0;
+    color: #64748b;
+    line-height: 1.5;
 }
 
+/* =========================================================
+   EVENT LIST
+========================================================= */
 
-td {
-
-    padding: 14px 12px;
-
-    border-bottom:
-        1px solid #e2e8f0;
-
-    font-size: 14px;
-}
-
-
-tr:hover {
-
+.event-item {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 18px;
+    margin-bottom: 12px;
     background: #f8fafc;
 }
 
+.event-item:last-child {
+    margin-bottom: 0;
+}
 
-/* =========================
-   STATUS
-========================= */
+.event-title {
+    color: #172554;
+    font-weight: bold;
+    font-size: 17px;
+    margin-bottom: 8px;
+}
 
-.status {
+.event-details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    color: #64748b;
+    font-size: 13px;
+}
 
+.event-status {
     display: inline-block;
-
-    padding: 6px 10px;
-
+    margin-top: 12px;
+    background: #fef3c7;
+    color: #92400e;
+    padding: 5px 10px;
     border-radius: 20px;
-
     font-size: 12px;
-
     font-weight: bold;
 }
 
-
-.pending {
-
-    background: #fef3c7;
-
-    color: #92400e;
-}
-
-
-.approved {
-
-    background: #dcfce7;
-
-    color: #166534;
-}
-
-
-.correction {
-
-    background: #fee2e2;
-
-    color: #991b1b;
-}
-
-
-/* =========================
-   VIEW BUTTON
-========================= */
-
-.view-btn {
-
+.view-all {
     display: inline-block;
-
-    background: #2563eb;
-
-    color: white;
-
     text-decoration: none;
-
-    padding: 7px 12px;
-
-    border-radius: 6px;
-
-    font-size: 12px;
+    color: #2563eb;
+    font-weight: bold;
+    font-size: 13px;
 }
 
-
-.view-btn:hover {
-
-    background: #1d4ed8;
-}
-
-
-/* =========================
+/* =========================================================
    EMPTY
-========================= */
+========================================================= */
 
 .empty {
-
-    padding: 35px;
-
     text-align: center;
-
+    padding: 35px 20px;
     color: #64748b;
 }
 
-
-/* =========================
-   RESPONSIVE
-========================= */
-
-@media (max-width: 1000px) {
-
-    .cards {
-
-        grid-template-columns:
-            repeat(2, 1fr);
-    }
-
-
-    .report-cards {
-
-        grid-template-columns:
-            repeat(2, 1fr);
-    }
-
+.empty-icon {
+    font-size: 35px;
+    margin-bottom: 8px;
 }
 
+/* =========================================================
+   RESPONSIVE
+========================================================= */
 
-@media (max-width: 650px) {
+@media (max-width: 1100px) {
+
+    .stats {
+        grid-template-columns:
+            repeat(2, 1fr);
+    }
+
+    .actions {
+        grid-template-columns:
+            repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 800px) {
 
     .sidebar {
-
-        width: 190px;
+        position: static;
+        width: 100%;
+        height: auto;
     }
-
 
     .main {
-
-        margin-left: 190px;
-
-        padding: 20px;
+        margin-left: 0;
     }
 
+    .topbar {
+        flex-direction: column;
+        align-items: flex-start;
+    }
 
-    .cards {
+    .admin-info {
+        text-align: left;
+    }
+}
 
+@media (max-width: 600px) {
+
+    .content {
+        padding: 18px;
+    }
+
+    .stats {
         grid-template-columns: 1fr;
     }
 
-
-    .report-cards {
-
+    .actions {
         grid-template-columns: 1fr;
     }
 
+    .welcome h2 {
+        font-size: 21px;
+    }
 }
 
 </style>
 
 </head>
 
-
 <body>
 
-
-<!-- =========================
+<!-- =====================================================
      SIDEBAR
-========================= -->
+===================================================== -->
 
-<div class="sidebar">
+<aside class="sidebar">
 
+<div class="logo">
 
-    <div class="logo">
+    <h2>🏛️ Event Hub</h2>
 
-        EventHub Admin
-
-    </div>
-
-
-    <a
-        href="admin_dashboard.php"
-        class="active"
-    >
-
-        🏠 Dashboard
-
-    </a>
-
-
-    <a
-        href="admin_dashboard.php#organizer-requests"
-    >
-
-        👥 Team Requests
-
-    </a>
-
-
-    <a
-        href="admin_dashboard.php#event-requests"
-    >
-
-        📋 Event Requests
-
-    </a>
-
-
-    <a
-        href="brochure_review.php"
-    >
-
-        📄 Brochure Review
-
-    </a>
-
-
-    <a
-        href="reports.php"
-    >
-
-        📊 Reports Review
-
-    </a>
-
-
-    <div class="menu-title">
-
-        Account
-
-    </div>
-
-
-    <a
-        href="../login.html"
-    >
-
-        🚪 Logout
-
-    </a>
-
+    <p>Department Administration</p>
 
 </div>
 
+<div class="nav-title">
+    Main
+</div>
+
+<a
+    href="admin_dashboard.php"
+    class="nav-link active"
+>
+    🏠
+    <span>Dashboard</span>
+</a>
+
+<div class="nav-title">
+    Event Management
+</div>
+
+<?php if ($pending_event_request_id > 0): ?>
+
+<a
+    href="event_request_view.php?event_id=<?php echo $pending_event_request_id; ?>"
+    class="nav-link"
+>
+    📋
+    <span>Event Requests</span>
+
+    <?php if ($pending_event_requests > 0): ?>
+
+        <span class="badge">
+            <?php
+            echo $pending_event_requests;
+            ?>
+        </span>
+
+    <?php endif; ?>
+
+</a>
+
+<?php else: ?>
+
+<a
+    href="event_request_view.php"
+    class="nav-link"
+>
+    📋
+    <span>Event Requests</span>
+
+    <?php if ($pending_event_requests > 0): ?>
+
+        <span class="badge">
+            <?php
+            echo $pending_event_requests;
+            ?>
+        </span>
+
+    <?php endif; ?>
+
+</a>
+
+<?php endif; ?>
 
 
-<!-- =========================
+<?php if ($pending_organizer_request_id > 0): ?>
+
+<a
+    href="organizer_request_view.php?request_id=<?php echo $pending_organizer_request_id; ?>"
+    class="nav-link"
+>
+    👥
+    <span>Organizer Requests</span>
+
+    <?php if ($pending_organizer_requests > 0): ?>
+
+        <span class="badge">
+            <?php
+            echo $pending_organizer_requests;
+            ?>
+        </span>
+
+    <?php endif; ?>
+
+</a>
+
+<?php else: ?>
+
+<a
+    href="organizer_request_view.php"
+    class="nav-link"
+>
+    👥
+    <span>Organizer Requests</span>
+</a>
+
+<?php endif; ?>
+
+
+<a
+    href="brochure_review.php"
+    class="nav-link"
+>
+    📢
+    <span>Brochure Review</span>
+
+    <?php if ($pending_brochures > 0): ?>
+
+        <span class="badge">
+            <?php
+            echo $pending_brochures;
+            ?>
+        </span>
+
+    <?php endif; ?>
+
+</a>
+
+
+<a
+    href="report_review.php"
+    class="nav-link"
+>
+    📑
+    <span>Report Review</span>
+</a>
+
+
+<div class="nav-title">
+    Finance
+</div>
+
+<a
+    href="payment_verification.php"
+    class="nav-link"
+>
+    💳
+    <span>Payment Verification</span>
+
+    <?php if ($pending_payments > 0): ?>
+
+        <span class="badge">
+            <?php
+            echo $pending_payments;
+            ?>
+        </span>
+
+    <?php endif; ?>
+
+</a>
+
+
+<div class="nav-title">
+    Account
+</div>
+
+<a
+    href="../profile.php"
+    class="nav-link"
+>
+    👤
+    <span>Profile</span>
+</a>
+
+<a
+    href="../logout.php"
+    class="nav-link"
+>
+    🚪
+    <span>Logout</span>
+</a>
+
+</aside>
+
+
+<!-- =====================================================
      MAIN
-========================= -->
+===================================================== -->
 
-<div class="main">
+<main class="main">
 
+<!-- =====================================================
+     TOP BAR
+===================================================== -->
 
-    <!-- TOP BAR -->
+<header class="topbar">
 
-    <div class="topbar">
+<div>
 
-        <h1>
+    <h1>
+        Admin Dashboard
+    </h1>
 
-            Welcome,
-            <?php echo htmlspecialchars($admin_name); ?>
-            👋
+    <p>
+        Department-level event administration
+    </p>
 
-        </h1>
-
-
-        <p>
-
-            Manage event requests, team approvals,
-            brochure reviews and reports.
-
-        </p>
-
-    </div>
+</div>
 
 
+<div class="admin-info">
 
-    <!-- =========================
-         DASHBOARD CARDS
-    ========================= -->
+    <div class="admin-name">
 
-    <div class="cards">
-
-
-        <div class="card">
-
-            <div class="card-title">
-
-                Total Events
-
-            </div>
-
-
-            <div class="card-number">
-
-                <?php echo $total_events; ?>
-
-            </div>
-
-        </div>
-
-
-
-        <div class="card">
-
-            <div class="card-title">
-
-                Pending Requests
-
-            </div>
-
-
-            <div class="card-number">
-
-                <?php echo $pending_requests; ?>
-
-            </div>
-
-        </div>
-
-
-
-        <div class="card">
-
-            <div class="card-title">
-
-                Approved Events
-
-            </div>
-
-
-            <div class="card-number">
-
-                <?php echo $approved_events; ?>
-
-            </div>
-
-        </div>
-
-
-
-        <div class="card">
-
-            <div class="card-title">
-
-                Total Users
-
-            </div>
-
-
-            <div class="card-number">
-
-                <?php echo $total_users; ?>
-
-            </div>
-
-        </div>
-
+        <?php
+        echo htmlspecialchars($admin_name);
+        ?>
 
     </div>
 
+    <div class="admin-department">
 
+        <?php
 
-    <!-- =========================
-         ORGANIZER / TEAM REQUESTS
-    ========================= -->
+        echo htmlspecialchars(
+            $admin_department !== ""
+                ? $admin_department
+                : "Department Admin / HOD"
+        );
 
-    <div
-        class="requests"
-        id="organizer-requests"
-    >
-
-
-        <div class="requests-header">
-
-            <h2>
-
-                👥 Organizer / Team Requests
-
-            </h2>
-
-        </div>
-
-
-        <?php if (
-            $organizer_requests &&
-            $organizer_requests->num_rows > 0
-        ): ?>
-
-
-            <table>
-
-
-                <thead>
-
-                    <tr>
-
-                        <th>
-                            Team Name
-                        </th>
-
-                        <th>
-                            Leader
-                        </th>
-
-                        <th>
-                            Email
-                        </th>
-
-                        <th>
-                            Reason
-                        </th>
-
-                        <th>
-                            Status
-                        </th>
-
-                        <th>
-                            Action
-                        </th>
-
-                    </tr>
-
-                </thead>
-
-
-                <tbody>
-
-
-                <?php while (
-                    $team =
-                    $organizer_requests->fetch_assoc()
-                ): ?>
-
-
-                    <tr>
-
-
-                        <td>
-
-                            <strong>
-
-                                <?php
-
-                                echo htmlspecialchars(
-                                    $team["team_name"]
-                                );
-
-                                ?>
-
-                            </strong>
-
-                        </td>
-
-
-                        <td>
-
-                            <?php
-
-                            echo htmlspecialchars(
-                                $team["leader_name"]
-                                ?? "Unknown"
-                            );
-
-                            ?>
-
-                        </td>
-
-
-                        <td>
-
-                            <?php
-
-                            echo htmlspecialchars(
-                                $team["leader_email"]
-                                ?? "-"
-                            );
-
-                            ?>
-
-                        </td>
-
-
-                        <td>
-
-                            <?php
-
-                            echo htmlspecialchars(
-                                $team["reason"]
-                                ?? "-"
-                            );
-
-                            ?>
-
-                        </td>
-
-
-                        <td>
-
-
-                            <?php
-
-                            $team_status =
-                                $team["status"];
-
-
-                            if (
-                                $team_status ===
-                                "approved"
-                            ) {
-
-                                echo '
-                                <span class="status approved">
-                                    Approved
-                                </span>';
-
-                            }
-
-                            elseif (
-                                $team_status ===
-                                "correction_required"
-                            ) {
-
-                                echo '
-                                <span class="status correction">
-                                    Correction Required
-                                </span>';
-
-                            }
-
-                            else {
-
-                                echo '
-                                <span class="status pending">
-                                    Pending
-                                </span>';
-
-                            }
-
-                            ?>
-
-
-                        </td>
-
-
-                        <td>
-
-
-                            <a
-                                href="organizer_request_view.php?request_id=<?php echo $team["request_id"]; ?>"
-                                class="view-btn"
-                            >
-
-                                View
-
-                            </a>
-
-
-                        </td>
-
-
-                    </tr>
-
-
-                <?php endwhile; ?>
-
-
-                </tbody>
-
-
-            </table>
-
-
-        <?php else: ?>
-
-
-            <div class="empty">
-
-                No organizer/team requests found.
-
-            </div>
-
-
-        <?php endif; ?>
-
+        ?>
 
     </div>
 
+</div>
+
+</header>
 
 
-    <!-- =========================
-         REPORT SUMMARY
-    ========================= -->
+<!-- =====================================================
+     CONTENT
+===================================================== -->
 
-    <div class="report-section">
-
-
-        <h2>
-
-            📊 Event Reports
-
-        </h2>
+<div class="content">
 
 
-        <div class="report-cards">
+<!-- =====================================================
+     WELCOME
+===================================================== -->
+
+<section class="welcome">
+
+    <h2>
+
+        Welcome,
+        <?php
+        echo htmlspecialchars($admin_name);
+        ?>
+        👋
+
+    </h2>
+
+    <p>
+
+        Manage department-level event requests,
+        organizer approvals, payments, brochures
+        and final reports from this dashboard.
+
+    </p>
+
+</section>
 
 
-            <div class="report-card">
+<!-- =====================================================
+     STATISTICS
+===================================================== -->
 
-                <h3>
-
-                    Pending Reports
-
-                </h3>
+<section class="stats">
 
 
-                <div class="report-number">
+<div class="stat-card">
 
-                    <?php echo $pending_reports; ?>
+    <div class="stat-icon">
+        📋
+    </div>
 
-                </div>
+    <div class="stat-number">
 
-            </div>
-
-
-
-            <div class="report-card">
-
-                <h3>
-
-                    Correction Required
-
-                </h3>
-
-
-                <div class="report-number">
-
-                    <?php echo $correction_reports; ?>
-
-                </div>
-
-            </div>
-
-
-
-            <div class="report-card">
-
-                <h3>
-
-                    Approved Reports
-
-                </h3>
-
-
-                <div class="report-number">
-
-                    <?php echo $approved_reports; ?>
-
-                </div>
-
-            </div>
-
-
-        </div>
-
-
-        <a
-            href="reports.php"
-            class="report-button"
-        >
-
-            View Reports
-
-        </a>
-
+        <?php
+        echo $pending_event_requests;
+        ?>
 
     </div>
 
+    <div class="stat-title">
+        Pending Event Requests
+    </div>
 
+</div>
 
-    <!-- =========================
-         EVENT REQUESTS
-    ========================= -->
 
-    <div
-        class="requests"
-        id="event-requests"
-    >
+<div class="stat-card">
 
+    <div class="stat-icon">
+        👥
+    </div>
 
-        <div class="requests-header">
+    <div class="stat-number">
 
-            <h2>
-
-                📋 Recent Event Requests
-
-            </h2>
-
-        </div>
-
-
-        <?php if (
-            $requests &&
-            $requests->num_rows > 0
-        ): ?>
-
-
-            <table>
-
-
-                <thead>
-
-                    <tr>
-
-                        <th>
-                            Event
-                        </th>
-
-                        <th>
-                            Organizer
-                        </th>
-
-                        <th>
-                            Date
-                        </th>
-
-                        <th>
-                            Time
-                        </th>
-
-                        <th>
-                            Venue
-                        </th>
-
-                        <th>
-                            Type
-                        </th>
-
-                        <th>
-                            Status
-                        </th>
-
-                        <th>
-                            Action
-                        </th>
-
-                    </tr>
-
-                </thead>
-
-
-                <tbody>
-
-
-                <?php while (
-                    $event =
-                    $requests->fetch_assoc()
-                ): ?>
-
-
-                    <tr>
-
-
-                        <td>
-
-                            <strong>
-
-                                <?php
-
-                                echo htmlspecialchars(
-                                    $event["event_name"]
-                                );
-
-                                ?>
-
-                            </strong>
-
-                        </td>
-
-
-                        <td>
-
-                            <?php
-
-                            echo htmlspecialchars(
-                                $event["organizer_name"]
-                                ?? "Unknown"
-                            );
-
-                            ?>
-
-                        </td>
-
-
-                        <td>
-
-                            <?php
-
-                            echo htmlspecialchars(
-                                $event["event_date"]
-                            );
-
-                            ?>
-
-                        </td>
-
-
-                        <td>
-
-                            <?php
-
-                            echo date(
-                                "h:i A",
-                                strtotime(
-                                    $event["start_time"]
-                                )
-                            );
-
-                            ?>
-
-                            -
-
-                            <?php
-
-                            echo date(
-                                "h:i A",
-                                strtotime(
-                                    $event["end_time"]
-                                )
-                            );
-
-                            ?>
-
-                        </td>
-
-
-                        <td>
-
-                            <?php
-
-                            echo htmlspecialchars(
-                                $event["venue"]
-                            );
-
-                            ?>
-
-                        </td>
-
-
-                        <td>
-
-                            <?php
-
-                            echo htmlspecialchars(
-                                $event["event_type"]
-                                ?? "-"
-                            );
-
-                            ?>
-
-                        </td>
-
-
-                        <td>
-
-
-                            <?php
-
-                            $status =
-                                $event["request_status"];
-
-
-                            if (
-                                $status ===
-                                "approved"
-                            ) {
-
-                                echo '
-                                <span class="status approved">
-                                    Approved
-                                </span>';
-
-                            }
-
-                            elseif (
-                                $status ===
-                                "correction_required"
-                            ) {
-
-                                echo '
-                                <span class="status correction">
-                                    Correction Required
-                                </span>';
-
-                            }
-
-                            else {
-
-                                echo '
-                                <span class="status pending">
-                                    Pending
-                                </span>';
-
-                            }
-
-                            ?>
-
-
-                        </td>
-
-
-                        <td>
-
-
-                            <a
-                                href="event_request_view.php?event_id=<?php echo $event["event_id"]; ?>"
-                                class="view-btn"
-                            >
-
-                                View
-
-                            </a>
-
-
-                        </td>
-
-
-                    </tr>
-
-
-                <?php endwhile; ?>
-
-
-                </tbody>
-
-
-            </table>
-
-
-        <?php else: ?>
-
-
-            <div class="empty">
-
-                No event requests found.
-
-            </div>
-
-
-        <?php endif; ?>
-
+        <?php
+        echo $pending_organizer_requests;
+        ?>
 
     </div>
+
+    <div class="stat-title">
+        Pending Organizer Requests
+    </div>
+
+</div>
+
+
+<div class="stat-card">
+
+    <div class="stat-icon">
+        💳
+    </div>
+
+    <div class="stat-number">
+
+        <?php
+        echo $pending_payments;
+        ?>
+
+    </div>
+
+    <div class="stat-title">
+        Pending Payments
+    </div>
+
+</div>
+
+
+<div class="stat-card">
+
+    <div class="stat-icon">
+        📢
+    </div>
+
+    <div class="stat-number">
+
+        <?php
+        echo $pending_brochures;
+        ?>
+
+    </div>
+
+    <div class="stat-title">
+        Pending Brochure Reviews
+    </div>
+
+</div>
+
+
+</section>
+
+
+<!-- =====================================================
+     QUICK ACTIONS
+===================================================== -->
+
+<section class="section">
+
+<div class="section-header">
+
+    <h2>
+        ⚡ Quick Actions
+    </h2>
+
+</div>
+
+
+<div class="actions">
+
+
+<?php if ($pending_event_request_id > 0): ?>
+
+<a
+    href="event_request_view.php?event_id=<?php echo $pending_event_request_id; ?>"
+    class="action-card"
+>
+
+<?php else: ?>
+
+<a
+    href="event_request_view.php"
+    class="action-card"
+>
+
+<?php endif; ?>
+
+    <div class="action-icon">
+        📋
+    </div>
+
+    <div class="action-title">
+        Event Requests
+    </div>
+
+    <div class="action-description">
+
+        Review and process submitted
+        event requests.
+
+    </div>
+
+</a>
+
+
+<?php if ($pending_organizer_request_id > 0): ?>
+
+<a
+    href="organizer_request_view.php?request_id=<?php echo $pending_organizer_request_id; ?>"
+    class="action-card"
+>
+
+<?php else: ?>
+
+<a
+    href="organizer_request_view.php"
+    class="action-card"
+>
+
+<?php endif; ?>
+
+    <div class="action-icon">
+        👥
+    </div>
+
+    <div class="action-title">
+        Organizer Requests
+    </div>
+
+    <div class="action-description">
+
+        Review organizing team
+        requests.
+
+    </div>
+
+</a>
+
+
+<a
+    href="payment_verification.php"
+    class="action-card"
+>
+
+    <div class="action-icon">
+        💳
+    </div>
+
+    <div class="action-title">
+        Payment Verification
+    </div>
+
+    <div class="action-description">
+
+        Cross-check transaction details
+        and payment screenshots.
+
+    </div>
+
+</a>
+
+
+<a
+    href="brochure_review.php"
+    class="action-card"
+>
+
+    <div class="action-icon">
+        📢
+    </div>
+
+    <div class="action-title">
+        Brochure Review
+    </div>
+
+    <div class="action-description">
+
+        Review submitted event
+        publicity materials.
+
+    </div>
+
+</a>
+
+
+<a
+    href="report_review.php"
+    class="action-card"
+>
+
+    <div class="action-icon">
+        📑
+    </div>
+
+    <div class="action-title">
+        Report Review
+    </div>
+
+    <div class="action-description">
+
+        Review submitted final
+        event reports.
+
+    </div>
+
+</a>
+
+
+<a
+    href="../events.php"
+    class="action-card"
+>
+
+    <div class="action-icon">
+        🎪
+    </div>
+
+    <div class="action-title">
+        View Events
+    </div>
+
+    <div class="action-description">
+
+        View approved and published
+        college events.
+
+    </div>
+
+</a>
 
 
 </div>
 
+</section>
+
+
+<!-- =====================================================
+     PENDING EVENT REQUESTS
+===================================================== -->
+
+<section class="section">
+
+
+<div class="section-header">
+
+    <h2>
+        📌 Recent Pending Event Requests
+    </h2>
+
+    <?php if ($pending_event_request_id > 0): ?>
+
+    <a
+        href="event_request_view.php?event_id=<?php echo $pending_event_request_id; ?>"
+        class="view-all"
+    >
+        View All →
+    </a>
+
+    <?php else: ?>
+
+    <a
+        href="event_request_view.php"
+        class="view-all"
+    >
+        View All →
+    </a>
+
+    <?php endif; ?>
+
+</div>
+
+
+<?php if (count($recent_events) > 0): ?>
+
+
+<?php foreach ($recent_events as $event): ?>
+
+
+<div class="event-item">
+
+    <div class="event-title">
+
+        <?php
+
+        echo htmlspecialchars(
+            $event["event_name"]
+        );
+
+        ?>
+
+    </div>
+
+
+    <div class="event-details">
+
+        <span>
+
+            📅
+
+            <?php
+
+            echo date(
+                "d M Y",
+                strtotime(
+                    $event["event_date"]
+                )
+            );
+
+            ?>
+
+        </span>
+
+
+        <span>
+
+            ⏰
+
+            <?php
+
+            echo date(
+                "h:i A",
+                strtotime(
+                    $event["start_time"]
+                )
+            );
+
+            ?>
+
+        </span>
+
+
+        <span>
+
+            📍
+
+            <?php
+
+            echo htmlspecialchars(
+                $event["venue"]
+            );
+
+            ?>
+
+        </span>
+
+    </div>
+
+
+    <span class="event-status">
+
+        ⏳ Pending Review
+
+    </span>
+
+
+</div>
+
+
+<?php endforeach; ?>
+
+
+<?php else: ?>
+
+
+<div class="empty">
+
+    <div class="empty-icon">
+        ✅
+    </div>
+
+    <h3>
+        No Pending Event Requests
+    </h3>
+
+    <p>
+
+        There are currently no event requests
+        waiting for department review.
+
+    </p>
+
+</div>
+
+
+<?php endif; ?>
+
+
+</section>
+
+
+</div>
+
+</main>
 
 </body>
 
 </html>
+
+<?php
+
+$conn->close();
+
+?>

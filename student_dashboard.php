@@ -5,7 +5,11 @@ include "db.php";
 
 $user_id = $_SESSION["user_id"];
 
-/* Check whether this student is an approved organizer */
+
+/* =========================================================
+   Check whether this student is an approved organizer
+========================================================= */
+
 $organizer_check = $conn->prepare(
     "SELECT tm.team_member_id
      FROM organizer_team_members tm
@@ -26,18 +30,33 @@ $is_organizer = ($organizer_result->num_rows > 0);
 $organizer_check->close();
 
 
-/* Upcoming events count */
+/* =========================================================
+   Upcoming Published Events Count
+========================================================= */
+
+$upcoming_events = 0;
+
 $upcoming_query = $conn->query(
     "SELECT COUNT(*) AS total
      FROM events
      WHERE event_date >= CURDATE()
-     AND status = 'upcoming'"
+     AND status = 'upcoming'
+     AND publication_status = 'published'"
 );
 
-$upcoming_events = $upcoming_query->fetch_assoc()["total"];
+if ($upcoming_query) {
+
+    $upcoming_row = $upcoming_query->fetch_assoc();
+
+    $upcoming_events = (int)$upcoming_row["total"];
+
+}
 
 
-/* My registrations count */
+/* =========================================================
+   My Registrations Count
+========================================================= */
+
 $registration_query = $conn->prepare(
     "SELECT COUNT(*) AS total
      FROM registrations
@@ -54,7 +73,10 @@ $my_registrations = $registration_result->fetch_assoc()["total"];
 $registration_query->close();
 
 
-/* My certificates count */
+/* =========================================================
+   My Certificates Count
+========================================================= */
+
 $certificate_query = $conn->prepare(
     "SELECT COUNT(*) AS total
      FROM certificates c
@@ -73,12 +95,22 @@ $my_certificates = $certificate_result->fetch_assoc()["total"];
 $certificate_query->close();
 
 
-/* Upcoming events */
+/* =========================================================
+   Upcoming Published Events
+========================================================= */
+
 $events_query = $conn->query(
-    "SELECT event_id, event_name, event_date, start_time, end_time, venue
+    "SELECT 
+        event_id,
+        event_name,
+        event_date,
+        start_time,
+        end_time,
+        venue
      FROM events
      WHERE event_date >= CURDATE()
      AND status = 'upcoming'
+     AND publication_status = 'published'
      ORDER BY event_date ASC, start_time ASC
      LIMIT 5"
 );
@@ -143,7 +175,9 @@ $events_query = $conn->query(
 <div class="dashboard">
 
 
-    <!-- SIDEBAR -->
+    <!-- =====================================================
+         SIDEBAR
+    ====================================================== -->
 
     <aside class="sidebar">
 
@@ -197,7 +231,9 @@ $events_query = $conn->query(
 
 
 
-    <!-- MAIN CONTENT -->
+    <!-- =====================================================
+         MAIN CONTENT
+    ====================================================== -->
 
     <main class="main-content">
 
@@ -223,6 +259,7 @@ $events_query = $conn->query(
 
                 🔔 &nbsp;
                 👤
+
                 <strong>
                     <?php echo htmlspecialchars($_SESSION["user_name"]); ?>
                 </strong>
@@ -241,13 +278,17 @@ $events_query = $conn->query(
 
 
 
-        <!-- WELCOME -->
+        <!-- =====================================================
+             WELCOME
+        ====================================================== -->
 
         <section class="welcome">
 
             <h2>
+
                 Welcome back,
                 <?php echo htmlspecialchars($_SESSION["user_name"]); ?>! 👋
+
             </h2>
 
             <p>
@@ -258,7 +299,9 @@ $events_query = $conn->query(
 
 
 
-        <!-- ORGANIZER SECTION -->
+        <!-- =====================================================
+             ORGANIZER SECTION
+        ====================================================== -->
 
         <?php if ($is_organizer): ?>
 
@@ -269,9 +312,11 @@ $events_query = $conn->query(
                 </h3>
 
                 <p>
+
                     You are an approved member of an organizing team.
                     You can manage your team's approved events while continuing
                     to use all student features.
+
                 </p>
 
                 <a
@@ -292,8 +337,10 @@ $events_query = $conn->query(
                 </h3>
 
                 <p>
+
                     Form a 3-member student team and request Organizer access.
                     Your request will be reviewed by the Admin.
+
                 </p>
 
                 <a
@@ -309,7 +356,9 @@ $events_query = $conn->query(
 
 
 
-        <!-- STATS -->
+        <!-- =====================================================
+             STATS
+        ====================================================== -->
 
         <section class="stats">
 
@@ -383,7 +432,9 @@ $events_query = $conn->query(
 
 
 
-        <!-- UPCOMING EVENTS -->
+        <!-- =====================================================
+             UPCOMING EVENTS
+        ====================================================== -->
 
         <section class="events-section">
 
@@ -402,7 +453,7 @@ $events_query = $conn->query(
 
 
 
-            <?php if ($events_query->num_rows > 0): ?>
+            <?php if ($events_query && $events_query->num_rows > 0): ?>
 
 
                 <?php while ($event = $events_query->fetch_assoc()): ?>
@@ -410,6 +461,8 @@ $events_query = $conn->query(
 
                     <div class="event-card">
 
+
+                        <!-- EVENT DATE -->
 
                         <div class="event-date">
 
@@ -441,6 +494,8 @@ $events_query = $conn->query(
                         </div>
 
 
+
+                        <!-- EVENT DETAILS -->
 
                         <div class="event-details">
 
@@ -496,8 +551,10 @@ $events_query = $conn->query(
 
 
 
+                        <!-- VIEW DETAILS -->
+
                         <a
-                            href="event-details.php?event_id=<?php echo $event["event_id"]; ?>"
+                            href="event-details.php?event_id=<?php echo (int)$event["event_id"]; ?>"
                             class="event-details-btn"
                         >
                             View Details

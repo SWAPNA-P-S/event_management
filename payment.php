@@ -3,15 +3,24 @@
 include "auth_student.php";
 include "db.php";
 
-if (!isset($_GET["registration_id"])) {
+if (!isset($_GET["registration_id"]) || !is_numeric($_GET["registration_id"])) {
     die("Registration not found.");
 }
 
-$registration_id = $_GET["registration_id"];
+$registration_id = (int) $_GET["registration_id"];
+$user_id = $_SESSION["user_id"];
+
+
+/* =========================================================
+   GET REGISTRATION + OFFICIALLY APPROVED EVENT
+   ========================================================= */
 
 $stmt = $conn->prepare(
-    "SELECT 
+    "SELECT
         r.registration_id,
+        r.registration_type,
+        r.status AS registration_status,
+        e.event_id,
         e.event_name,
         e.event_date,
         e.start_time,
@@ -19,16 +28,23 @@ $stmt = $conn->prepare(
         e.venue,
         e.fee
      FROM registrations r
-     JOIN events e
-     ON r.event_id = e.event_id
+     INNER JOIN events e
+        ON r.event_id = e.event_id
+     INNER JOIN event_brochures eb
+        ON e.event_id = eb.event_id
      WHERE r.registration_id = ?
-     AND r.user_id = ?"
+       AND r.user_id = ?
+       AND e.request_status = 'approved'
+       AND eb.hod_status = 'approved'
+       AND eb.status = 'approved'
+     ORDER BY eb.brochure_id DESC
+     LIMIT 1"
 );
 
 $stmt->bind_param(
     "ii",
     $registration_id,
-    $_SESSION["user_id"]
+    $user_id
 );
 
 $stmt->execute();
@@ -36,24 +52,175 @@ $stmt->execute();
 $result = $stmt->get_result();
 
 if ($result->num_rows == 0) {
-    die("Registration not found.");
+
+    $stmt->close();
+    $conn->close();
+
+    die("Registration not found or event is not available for payment.");
 }
 
 $registration = $result->fetch_assoc();
 
 $stmt->close();
 
+
+/* =========================================================
+   CHECK WHETHER THIS IS A PAID EVENT
+   ========================================================= */
+
+$event_fee = (float) $registration["fee"];
+
+if ($event_fee <= 0) {
+
+    $conn->close();
+
+    die("This is a free event. No payment is required.");
+}
+
+
+/* =========================================================
+   CHECK WHETHER PAYMENT IS ALREADY COMPLETED
+   ========================================================= */
+
+$payment_check = $conn->prepare(
+    "SELECT payment_id
+     FROM payments
+     WHERE registration_id = ?
+     LIMIT 1"
+);
+
+$payment_check->bind_param("i", $registration_id);
+$payment_check->execute();
+
+$payment_result = $payment_check->get_result();
+
+if ($payment_result->num_rows > 0) {
+
+    $payment_check->close();
+    $conn->close();
+
 ?>
+
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Payment Already Submitted - Event Hub</title>
+
+    <style>
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f6fb;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .message-card {
+            width: 90%;
+            max-width: 500px;
+            background: white;
+            padding: 45px;
+            border-radius: 18px;
+            text-align: center;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+        }
+
+        .icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background: #e8f5e9;
+            color: #2e7d32;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+        }
+
+        h1 {
+            color: #2e7d32;
+            margin-bottom: 15px;
+        }
+
+        p {
+            color: #666;
+            line-height: 1.6;
+            margin-bottom: 25px;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 22px;
+            background: #263a8b;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+
+    </style>
+
+</head>
+
+<body>
+
+    <div class="message-card">
+
+        <div class="icon">
+            ✓
+        </div>
+
+        <h1>Payment Already Submitted</h1>
+
+        <p>
+            Your payment details for this registration have already been submitted.
+        </p>
+
+        <a href="my_registration.php" class="btn">
+            My Registrations
+        </a>
+
+    </div>
+
+</body>
+
+</html>
+
+<?php
+
+    exit();
+}
+
+$payment_check->close();
+
+?>
+
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>Payment - Event Hub</title>
-    <!-- style with internal css -->
 
     <style>
+
         * {
             margin: 0;
             padding: 0;
@@ -129,7 +296,6 @@ $stmt->close();
             border-top: 1px solid #ddd;
             margin-top: 20px;
             padding-top: 18px;
-
             display: flex;
             justify-content: space-between;
         }
@@ -209,10 +375,11 @@ $stmt->close();
             background: #263a8b;
             color: white;
             text-align: center;
-            text-decoration: none;
+            border: none;
             border-radius: 8px;
             font-weight: bold;
             font-size: 16px;
+            cursor: pointer;
         }
 
         .complete-btn:hover {
@@ -234,6 +401,7 @@ $stmt->close();
         }
 
         @media (max-width: 600px) {
+
             .header {
                 padding: 0 20px;
             }
@@ -245,8 +413,11 @@ $stmt->close();
             .card {
                 padding: 22px;
             }
+
         }
+
     </style>
+
 </head>
 
 <body>
@@ -259,7 +430,7 @@ $stmt->close();
 
         <a href="events.php" class="back-btn">
             ← Back to Events
-       </a>
+        </a>
 
     </header>
 
@@ -274,99 +445,155 @@ $stmt->close();
 
 
         <!-- Event Information -->
+
         <div class="card">
 
-            <h2><?php echo htmlspecialchars($registration["event_name"]); ?></h2>
+            <h2>
+                <?php echo htmlspecialchars($registration["event_name"]); ?>
+            </h2>
 
             <div class="event-info">
 
                 <p>
                     📅 <strong>Date:</strong>
-                    <?php echo date("d F Y", strtotime($registration["event_date"])); ?>
+                    <?php
+                    echo date(
+                        "d F Y",
+                        strtotime($registration["event_date"])
+                    );
+                    ?>
                 </p>
 
                 <p>
                     ⏰ <strong>Time:</strong>
-                    <?php echo date("h:i A", strtotime($registration["start_time"])); ?>
-    -
-                    <?php echo date("h:i A", strtotime($registration["end_time"])); ?>
+                    <?php
+                    echo date(
+                        "h:i A",
+                        strtotime($registration["start_time"])
+                    );
+                    ?>
+                    -
+                    <?php
+                    echo date(
+                        "h:i A",
+                        strtotime($registration["end_time"])
+                    );
+                    ?>
                 </p>
 
                 <p>
                     📍 <strong>Venue:</strong>
-                    <?php echo htmlspecialchars($registration["venue"]); ?>
+                    <?php
+                    echo htmlspecialchars($registration["venue"]);
+                    ?>
                 </p>
 
             </div>
 
             <div class="fee">
-                <span>Registration Fee</span>
-                <strong>₹<?php echo number_format($registration["fee"], 2); ?></strong>
+
+                <span>
+                    Registration Fee
+                </span>
+
+                <strong>
+                    ₹<?php echo number_format($event_fee, 2); ?>
+                </strong>
+
             </div>
 
         </div>
 
 
         <!-- Payment Card -->
+
         <div class="card">
 
-            <h2>Payment Method</h2>
-            <form action="payment_process.php" method="POST" enctype="multipart/form-data">
-            <input type="hidden"
-                    name="registration_id"
-                    value="<?php echo $registration_id; ?>">
+            <h2>
+                Payment Method
+            </h2>
 
-            <div class="upi">
-
-                <h3>📱 UPI Payment</h3>
-
-                <p>
-                    Scan the QR code using any UPI app.
-                </p>
-
-            </div>
-
-
-            <div class="qr">
-                <span>QR</span>
-            </div>
-
-            <p class="qr-text">
-                Scan this QR code to pay <strong>₹<?php echo number_format($registration["fee"], 2); ?></strong>
-            </p>
-
-
-            <label>
-                Transaction ID / UTR Number
-            </label>
-
-           <input type="text"
-                name="transaction_id"
-                placeholder="Enter your transaction ID"
-                required
-           >
-
-
-            <label>
-                Upload Payment Screenshot
-            </label>
-
-            <input type="file"
-                name="payment_screenshot"
-                accept="image/*"
-                required
+            <form
+                action="payment_process.php"
+                method="POST"
+                enctype="multipart/form-data"
             >
 
-            <p class="help">
-                Please upload a clear screenshot of your successful payment.
-            </p>
+                <input
+                    type="hidden"
+                    name="registration_id"
+                    value="<?php echo $registration_id; ?>"
+                >
 
 
-            <button type="submit" class="complete-btn">
-                Payment Completed
-            </button>
+                <div class="upi">
 
-</form>
+                    <h3>
+                        📱 UPI Payment
+                    </h3>
+
+                    <p>
+                        Scan the QR code using any UPI app.
+                    </p>
+
+                </div>
+
+
+                <div class="qr">
+
+                    <span>
+                        QR
+                    </span>
+
+                </div>
+
+
+                <p class="qr-text">
+
+                    Scan this QR code to pay
+                    <strong>
+                        ₹<?php echo number_format($event_fee, 2); ?>
+                    </strong>
+
+                </p>
+
+
+                <label>
+                    Transaction ID / UTR Number
+                </label>
+
+                <input
+                    type="text"
+                    name="transaction_id"
+                    placeholder="Enter your transaction ID"
+                    required
+                >
+
+
+                <label>
+                    Upload Payment Screenshot
+                </label>
+
+                <input
+                    type="file"
+                    name="payment_screenshot"
+                    accept="image/*"
+                    required
+                >
+
+                <p class="help">
+                    Please upload a clear screenshot of your successful payment.
+                </p>
+
+
+                <button
+                    type="submit"
+                    class="complete-btn"
+                >
+                    Payment Completed
+                </button>
+
+            </form>
 
         </div>
 
@@ -383,4 +610,5 @@ $stmt->close();
     </footer>
 
 </body>
+
 </html>

@@ -44,7 +44,7 @@ h1 {
 
 .registration-card h2 {
     color: #5b3b8c;
-    margin-bottom: 25px;
+    margin-bottom: 28px;
 }
 
 form {
@@ -52,25 +52,45 @@ form {
     flex-direction: column;
 }
 
+/* Labels */
+
 label {
-    margin-bottom: 7px;
+    margin-bottom: 8px;
     font-weight: 600;
     color: #444;
 }
 
-input {
-    padding: 12px 14px;
-    margin-bottom: 18px;
+/* Text inputs */
+
+input,
+select {
+    width: 100%;
+    height: 46px;
+    padding: 11px 14px;
+    margin-bottom: 20px;
     border: 1px solid #ccc;
     border-radius: 8px;
     font-size: 15px;
     outline: none;
+    background: white;
 }
 
-input:focus {
+/* Dropdown */
+
+select {
+    cursor: pointer;
+    appearance: auto;
+}
+
+/* Focus */
+
+input:focus,
+select:focus {
     border-color: #7b55b5;
     box-shadow: 0 0 0 2px rgba(123, 85, 181, 0.12);
 }
+
+/* Submit button */
 
 .submit-btn {
     margin-top: 5px;
@@ -88,6 +108,8 @@ input:focus {
     background: #563681;
 }
 
+/* Login link */
+
 .login-link {
     text-align: center;
     margin-top: 20px;
@@ -104,7 +126,10 @@ input:focus {
     text-decoration: underline;
 }
 
+/* Mobile */
+
 @media (max-width: 600px) {
+
     .page {
         padding: 25px 15px;
     }
@@ -116,4 +141,5 @@ input:focus {
     h1 {
         font-size: 26px;
     }
+
 }

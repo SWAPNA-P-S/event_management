@@ -1,16 +1,19 @@
 <?php
 
 session_start();
-require_once "../db.php";
 
+require_once "../db.php";
 
 /* =========================================================
    CHECK LOGIN
 ========================================================= */
 
 if (!isset($_SESSION["user_id"])) {
+
     header("Location: ../login.html");
+
     exit();
+
 }
 
 $user_id = $_SESSION["user_id"];
@@ -34,12 +37,15 @@ $stmt = $conn->prepare("
 ");
 
 $stmt->bind_param("i", $user_id);
+
 $stmt->execute();
 
 $result = $stmt->get_result();
 
 if ($result->num_rows > 0) {
+
     $organizer_access = true;
+
 }
 
 $stmt->close();
@@ -48,15 +54,20 @@ $stmt->close();
 /* Existing organizer users */
 
 if ($_SESSION["role"] === "organizer") {
+
     $organizer_access = true;
+
 }
 
 
 /* No organizer access */
 
 if (!$organizer_access) {
+
     header("Location: ../student_dashboard.php");
+
     exit();
+
 }
 
 
@@ -88,6 +99,7 @@ $stmt = $conn->prepare("
 ");
 
 $stmt->bind_param("i", $user_id);
+
 $stmt->execute();
 
 $result = $stmt->get_result();
@@ -97,6 +109,7 @@ while ($row = $result->fetch_assoc()) {
     $my_request_ids[] = (int)$row["request_id"];
 
     $my_team_names[] = $row["team_name"];
+
 }
 
 $stmt->close();
@@ -134,6 +147,7 @@ if (count($my_request_ids) > 0) {
             fee,
             status,
             request_status,
+            publication_status,
             organizer_request_id
         FROM events
         WHERE organizer_request_id IN ($placeholders)
@@ -152,9 +166,11 @@ if (count($my_request_ids) > 0) {
     while ($row = $result->fetch_assoc()) {
 
         $my_events[] = $row;
+
     }
 
     $stmt->close();
+
 }
 
 
@@ -216,6 +232,7 @@ if (count($my_request_ids) > 0) {
     while ($row = $result->fetch_assoc()) {
 
         $other_events[] = $row;
+
     }
 
     $stmt->close();
@@ -248,7 +265,9 @@ if (count($my_request_ids) > 0) {
     while ($row = $result->fetch_assoc()) {
 
         $other_events[] = $row;
+
     }
+
 }
 
 
@@ -270,12 +289,17 @@ $total_participants = 0;
 foreach ($my_events as $event) {
 
     if ($event["request_status"] === "pending") {
+
         $pending_requests++;
+
     }
 
     if ($event["request_status"] === "approved") {
+
         $approved_events++;
+
     }
+
 }
 
 
@@ -316,6 +340,7 @@ if (count($my_request_ids) > 0) {
         $result->fetch_assoc()["total"];
 
     $stmt->close();
+
 }
 
 
@@ -327,7 +352,6 @@ if (count($my_request_ids) > 0) {
 $organizer_events = $my_events;
 
 ?>
-
 <!DOCTYPE html>
 <html lang="en">
 
@@ -342,6 +366,10 @@ $organizer_events = $my_events;
 
 
 <style>
+
+/* =========================
+   GENERAL
+========================= */
 
 * {
     margin: 0;
@@ -787,6 +815,7 @@ body {
     background: rgba(15, 23, 42, 0.65);
 
     align-items: center;
+
     justify-content: center;
 }
 
@@ -794,6 +823,7 @@ body {
     background: white;
 
     width: 420px;
+
     max-width: 90%;
 
     padding: 30px;
@@ -876,6 +906,49 @@ body {
 
 
 /* =========================
+   STAGE NOTIFICATIONS
+========================= */
+
+.notification-box {
+    background: #f0fdf4;
+
+    border: 1px solid #86efac;
+
+    border-left: 5px solid #16a34a;
+
+    padding: 16px 18px;
+
+    border-radius: 10px;
+
+    margin-bottom: 12px;
+}
+
+.notification-box h3 {
+    color: #166534;
+
+    font-size: 16px;
+
+    margin-bottom: 6px;
+}
+
+.notification-box p {
+    color: #475569;
+
+    font-size: 14px;
+
+    line-height: 1.6;
+}
+
+.notification-time {
+    color: #64748b;
+
+    font-size: 12px;
+
+    margin-top: 8px;
+}
+
+
+/* =========================
    RESPONSIVE
 ========================= */
 
@@ -915,10 +988,7 @@ body {
 </style>
 
 </head>
-
-
 <body>
-
 
 <!-- =========================
      SIDEBAR
@@ -1087,501 +1157,77 @@ body {
         while continuing to use all student privileges.
 
     </div>
-
-
     <!-- =========================
-         DASHBOARD COUNTS
-    ========================= -->
+     DASHBOARD COUNTS
+========================= -->
 
-    <div class="cards">
+<div class="cards">
 
 
-        <div class="card">
+    <div class="card">
 
-            <h3>
-                My Team Events
-            </h3>
+        <h3>
+            My Team Events
+        </h3>
 
-            <div class="number">
+        <div class="number">
 
-                <?php
-                echo $total_events;
-                ?>
-
-            </div>
-
-        </div>
-
-
-        <div class="card">
-
-            <h3>
-                Pending Requests
-            </h3>
-
-            <div class="number">
-
-                <?php
-                echo $pending_requests;
-                ?>
-
-            </div>
-
-        </div>
-
-
-        <div class="card">
-
-            <h3>
-                Approved Events
-            </h3>
-
-            <div class="number">
-
-                <?php
-                echo $approved_events;
-                ?>
-
-            </div>
-
-        </div>
-
-
-        <div class="card">
-
-            <h3>
-                My Event Participants
-            </h3>
-
-            <div class="number">
-
-                <?php
-                echo $total_participants;
-                ?>
-
-            </div>
-
-        </div>
-
-
-    </div>
-
-
-    <!-- =========================
-         MY EVENTS
-    ========================= -->
-
-    <div class="section">
-
-        <h2>
-            📌 My Team Events
-        </h2>
-
-
-        <p class="empty"
-           style="margin-bottom:18px;">
-
-            These are the events managed by your approved
-            organizing team.
-
-        </p>
-
-
-        <?php if (count($my_events) > 0): ?>
-
-            <div class="event-list">
-
-                <?php foreach ($my_events as $event): ?>
-
-                    <div class="event-box">
-
-                        <h3>
-
-                            <?php
-                            echo htmlspecialchars(
-                                $event["event_name"]
-                            );
-                            ?>
-
-                        </h3>
-
-
-                        <div class="event-info">
-
-                            📅
-
-                            <?php
-                            echo date(
-                                "d M Y",
-                                strtotime(
-                                    $event["event_date"]
-                                )
-                            );
-                            ?>
-
-                            <br>
-
-
-                            ⏰
-
-                            <?php
-                            echo date(
-                                "h:i A",
-                                strtotime(
-                                    $event["start_time"]
-                                )
-                            );
-                            ?>
-
-                            -
-
-                            <?php
-                            echo date(
-                                "h:i A",
-                                strtotime(
-                                    $event["end_time"]
-                                )
-                            );
-                            ?>
-
-                            <br>
-
-
-                            📍
-
-                            <?php
-                            echo htmlspecialchars(
-                                $event["venue"]
-                            );
-                            ?>
-
-                        </div>
-
-
-                        <div class="event-buttons">
-
-                            <a
-                                href="../event-details.php?event_id=<?php echo $event["event_id"]; ?>"
-                                class="view-btn">
-
-                                View Event
-
-                            </a>
-
-
-                            <a
-                                href="planning.php?event_id=<?php echo $event["event_id"]; ?>"
-                                class="manage-btn">
-
-                                Manage Event
-
-                            </a>
-
-                        </div>
-
-                    </div>
-
-                <?php endforeach; ?>
-
-            </div>
-
-        <?php else: ?>
-
-            <p class="empty">
-
-                No events are currently linked to your
-                approved organizing team.
-
-            </p>
-
-        <?php endif; ?>
-
-    </div>
-
-
-    <!-- =========================
-         OTHER APPROVED EVENTS
-    ========================= -->
-
-    <div class="section">
-
-        <h2>
-            🌐 Other Approved Events
-        </h2>
-
-
-        <div class="view-only-note">
-
-            ℹ️ These events belong to other organizing teams.
-            You can view the event details and participate
-            just like a normal student.
-
-        </div>
-
-
-        <?php if (count($other_events) > 0): ?>
-
-            <div class="event-list">
-
-                <?php foreach ($other_events as $event): ?>
-
-                    <div class="event-box">
-
-                        <h3>
-
-                            <?php
-                            echo htmlspecialchars(
-                                $event["event_name"]
-                            );
-                            ?>
-
-                        </h3>
-
-
-                        <div class="event-info">
-
-                            📅
-
-                            <?php
-                            echo date(
-                                "d M Y",
-                                strtotime(
-                                    $event["event_date"]
-                                )
-                            );
-                            ?>
-
-                            <br>
-
-
-                            ⏰
-
-                            <?php
-                            echo date(
-                                "h:i A",
-                                strtotime(
-                                    $event["start_time"]
-                                )
-                            );
-                            ?>
-
-                            -
-
-                            <?php
-                            echo date(
-                                "h:i A",
-                                strtotime(
-                                    $event["end_time"]
-                                )
-                            );
-                            ?>
-
-                            <br>
-
-
-                            📍
-
-                            <?php
-                            echo htmlspecialchars(
-                                $event["venue"]
-                            );
-                            ?>
-
-
-                            <?php if (!empty($event["team_name"])): ?>
-
-                                <br>
-
-                                <span class="event-team">
-
-                                    Organized by:
-                                    <?php
-                                    echo htmlspecialchars(
-                                        $event["team_name"]
-                                    );
-                                    ?>
-
-                                </span>
-
-                            <?php endif; ?>
-
-                        </div>
-
-
-                        <div class="event-buttons">
-
-                            <!-- Student-style event viewing -->
-
-                            <a
-                                href="../event-details.php?event_id=<?php echo $event["event_id"]; ?>"
-                                class="view-btn">
-
-                                View Details
-
-                            </a>
-
-
-                            <!-- Student-style participation -->
-
-                            <a
-                                href="../registration.php?event_id=<?php echo $event["event_id"]; ?>"
-                                class="register-btn">
-
-                                Register / Participate
-
-                            </a>
-
-                        </div>
-
-                    </div>
-
-                <?php endforeach; ?>
-
-            </div>
-
-        <?php else: ?>
-
-            <p class="empty">
-
-                No other approved events available right now.
-
-            </p>
-
-        <?php endif; ?>
-
-    </div>
-
-
-    <!-- =========================
-         QUICK ACTIONS
-    ========================= -->
-
-    <div class="section">
-
-        <h2>
-            Quick Actions
-        </h2>
-
-
-        <div class="quick-actions">
-
-
-            <a
-                href="event_request.php"
-                class="action">
-
-                + Create Event Request
-
-            </a>
-
-
-            <a
-                href="approval_status.php"
-                class="action">
-
-                Approval Status
-
-            </a>
-
-
-            <a
-                href="planning.php"
-                class="action">
-
-                Event Planning
-
-            </a>
-
-
-            <button
-                type="button"
-                class="action"
-                onclick="openEventSelector('brochure')">
-
-                📄 Brochure
-
-            </button>
-
-
-            <button
-                type="button"
-                class="action"
-                onclick="openEventSelector('checklist')">
-
-                ✅ Event Checklist
-
-            </button>
-
-
-            <a
-                href="participants.php"
-                class="action">
-
-                View Participants
-
-            </a>
-
-
-            <a
-                href="scan_qr.php"
-                class="action">
-
-                Scan Attendance QR
-
-            </a>
-
-
-            <!-- Student privilege -->
-
-            <a
-                href="../events.php"
-                class="action">
-
-                🎓 Browse All Events
-
-            </a>
-
+            <?php
+            echo $total_events;
+            ?>
 
         </div>
 
     </div>
 
 
-    <!-- =========================
-         RECENT ACTIVITY
-    ========================= -->
+    <div class="card">
 
-    <div class="section">
+        <h3>
+            Pending Requests
+        </h3>
 
-        <h2>
-            Recent Activity
-        </h2>
+        <div class="number">
+
+            <?php
+            echo $pending_requests;
+            ?>
+
+        </div>
+
+    </div>
 
 
-        <?php if ($total_events > 0): ?>
+    <div class="card">
 
-            <p class="empty">
+        <h3>
+            Approved Events
+        </h3>
 
-                You currently have
+        <div class="number">
 
-                <strong>
-                    <?php echo $total_events; ?>
-                </strong>
+            <?php
+            echo $approved_events;
+            ?>
 
-                event(s) connected to your approved
-                organizing team.
+        </div>
 
-            </p>
+    </div>
 
-        <?php else: ?>
 
-            <p class="empty">
+    <div class="card">
 
-                No recent organizer activity available.
+        <h3>
+            My Event Participants
+        </h3>
 
-            </p>
+        <div class="number">
 
-        <?php endif; ?>
+            <?php
+            echo $total_participants;
+            ?>
+
+        </div>
 
     </div>
 
@@ -1590,41 +1236,211 @@ body {
 
 
 <!-- =========================
-     EVENT SELECT MODAL
+     STAGE READY NOTIFICATIONS
 ========================= -->
 
-<div
-    class="modal"
-    id="eventModal">
+<div class="section">
 
-    <div class="modal-box">
+    <h2>
+        🔔 Stage Notifications
+    </h2>
 
-        <h2 id="modalTitle">
-            Select Event
-        </h2>
 
-        <p id="modalDescription">
-            Select an event to continue.
+    <?php
+
+    /*
+     * Stage Manager creates a notification
+     * in the updates table when the stage
+     * becomes ready.
+     */
+
+    $stage_notifications = [];
+
+
+    if (count($my_request_ids) > 0) {
+
+        $placeholders = implode(
+            ",",
+            array_fill(
+                0,
+                count($my_request_ids),
+                "?"
+            )
+        );
+
+        $types = str_repeat(
+            "i",
+            count($my_request_ids)
+        );
+
+
+        $stmt = $conn->prepare("
+            SELECT
+                u.update_id,
+                u.event_id,
+                u.title,
+                u.message,
+                u.update_type,
+                u.created_at,
+                e.event_name,
+                e.event_date
+            FROM updates u
+            INNER JOIN events e
+                ON u.event_id = e.event_id
+            WHERE u.update_type = 'stage_ready'
+              AND e.organizer_request_id IN ($placeholders)
+            ORDER BY u.created_at DESC
+        ");
+
+
+        $stmt->bind_param(
+            $types,
+            ...$my_request_ids
+        );
+
+
+        $stmt->execute();
+
+        $result = $stmt->get_result();
+
+
+        while ($row = $result->fetch_assoc()) {
+
+            $stage_notifications[] = $row;
+
+        }
+
+
+        $stmt->close();
+
+    }
+
+
+    ?>
+
+
+    <?php if (count($stage_notifications) > 0): ?>
+
+
+        <?php foreach ($stage_notifications as $notification): ?>
+
+            <div class="notification-box">
+
+                <h3>
+
+                    <?php
+                    echo htmlspecialchars(
+                        $notification["title"]
+                    );
+                    ?>
+
+                </h3>
+
+
+                <p>
+
+                    <?php
+                    echo htmlspecialchars(
+                        $notification["message"]
+                    );
+                    ?>
+
+                </p>
+
+
+                <p class="notification-time">
+
+                    Event:
+
+                    <?php
+                    echo htmlspecialchars(
+                        $notification["event_name"]
+                    );
+                    ?>
+
+                    <br>
+
+                    Event Date:
+
+                    <?php
+                    echo date(
+                        "d M Y",
+                        strtotime(
+                            $notification["event_date"]
+                        )
+                    );
+                    ?>
+
+                    <br>
+
+                    Notification:
+
+                    <?php
+                    echo date(
+                        "d M Y, h:i A",
+                        strtotime(
+                            $notification["created_at"]
+                        )
+                    );
+                    ?>
+
+                </p>
+
+            </div>
+
+        <?php endforeach; ?>
+
+
+    <?php else: ?>
+
+
+        <p class="empty">
+
+            No stage notifications yet.
+
+            When the Stage Manager completes the required
+            preparation and marks the stage as ready,
+            the notification will appear here.
+
         </p>
 
 
-        <?php if (count($organizer_events) > 0): ?>
-
-            <select id="selectedEvent">
-
-                <option value="">
-                    -- Select Event --
-                </option>
+    <?php endif; ?>
 
 
-                <?php foreach (
-                    $organizer_events as $event
-                ): ?>
+</div>
+<!-- =========================
+     MY EVENTS
+========================= -->
 
-                    <option
-                        value="<?php
-                        echo $event["event_id"];
-                        ?>">
+<div class="section">
+
+    <h2>
+        📌 My Team Events
+    </h2>
+
+
+    <p
+        class="empty"
+        style="margin-bottom:18px;">
+
+        These are the events managed by your approved
+        organizing team.
+
+    </p>
+
+
+    <?php if (count($my_events) > 0): ?>
+
+        <div class="event-list">
+
+
+            <?php foreach ($my_events as $event): ?>
+
+                <div class="event-box">
+
+
+                    <h3>
 
                         <?php
                         echo htmlspecialchars(
@@ -1632,188 +1448,756 @@ body {
                         );
                         ?>
 
-                    </option>
-
-                <?php endforeach; ?>
-
-            </select>
+                    </h3>
 
 
-            <div class="modal-buttons">
+                    <div class="event-info">
 
-                <button
-                    type="button"
-                    class="modal-btn cancel-btn"
-                    onclick="closeEventSelector()">
+                        📅
 
-                    Cancel
+                        <?php
+                        echo date(
+                            "d M Y",
+                            strtotime(
+                                $event["event_date"]
+                            )
+                        );
+                        ?>
 
-                </button>
-
-
-                <button
-                    type="button"
-                    class="modal-btn continue-btn"
-                    onclick="continueToModule()">
-
-                    Continue
-
-                </button>
-
-            </div>
-
-        <?php else: ?>
-
-            <p>
-                No events available for organizer
-                management yet.
-            </p>
+                        <br>
 
 
-            <div class="modal-buttons">
+                        ⏰
 
-                <button
-                    type="button"
-                    class="modal-btn cancel-btn"
-                    onclick="closeEventSelector()">
+                        <?php
+                        echo date(
+                            "h:i A",
+                            strtotime(
+                                $event["start_time"]
+                            )
+                        );
+                        ?>
 
-                    Close
+                        -
 
-                </button>
+                        <?php
+                        echo date(
+                            "h:i A",
+                            strtotime(
+                                $event["end_time"]
+                            )
+                        );
+                        ?>
 
-            </div>
+                        <br>
 
-        <?php endif; ?>
+
+                        📍
+
+                        <?php
+                        echo htmlspecialchars(
+                            $event["venue"]
+                        );
+                        ?>
+
+                    </div>
+
+
+                    <div class="event-buttons">
+
+
+                        <a
+                            href="../event-details.php?event_id=<?php echo $event["event_id"]; ?>"
+                            class="view-btn">
+
+                            View Event
+
+                        </a>
+
+
+                        <?php if (
+                            $event["publication_status"] === "published"
+                            &&
+                            $event["status"] !== "cancelled"
+                            &&
+                            $event["status"] !== "cancellation_requested"
+                        ): ?>
+
+
+                            <a
+                               href="cancellation_request.php?event_id=<?php echo $event["event_id"]; ?>"
+                                class="manage-btn"
+                                onclick="return confirm('Are you sure you want to request cancellation for this event?');">
+
+                                Request Cancellation
+
+                            </a>
+
+
+                        <?php endif; ?>
+
+
+                        <?php if (
+                            $event["status"] === "cancellation_requested"
+                        ): ?>
+
+
+                            <span
+                                class="manage-btn"
+                                style="background:#f59e0b; cursor:default;">
+
+                                Cancellation Requested
+
+                            </span>
+
+
+                        <?php endif; ?>
+
+
+                    </div>
+
+
+                </div>
+
+            <?php endforeach; ?>
+
+
+        </div>
+
+
+    <?php else: ?>
+
+
+        <p class="empty">
+
+            No events are currently linked to your
+            approved organizing team.
+
+        </p>
+
+
+    <?php endif; ?>
+
+
+</div>
+<!-- =========================
+     OTHER APPROVED EVENTS
+========================= -->
+
+<div class="section">
+
+    <h2>
+        🌐 Other Approved Events
+    </h2>
+
+
+    <div class="view-only-note">
+
+        ℹ️ These events belong to other organizing teams.
+
+        You can view the event details and participate
+        just like a normal student.
+
+    </div>
+
+
+    <?php if (count($other_events) > 0): ?>
+
+        <div class="event-list">
+
+
+            <?php foreach ($other_events as $event): ?>
+
+                <div class="event-box">
+
+
+                    <h3>
+
+                        <?php
+                        echo htmlspecialchars(
+                            $event["event_name"]
+                        );
+                        ?>
+
+                    </h3>
+
+
+                    <div class="event-info">
+
+                        📅
+
+                        <?php
+                        echo date(
+                            "d M Y",
+                            strtotime(
+                                $event["event_date"]
+                            )
+                        );
+                        ?>
+
+                        <br>
+
+
+                        ⏰
+
+                        <?php
+                        echo date(
+                            "h:i A",
+                            strtotime(
+                                $event["start_time"]
+                            )
+                        );
+                        ?>
+
+                        -
+
+                        <?php
+                        echo date(
+                            "h:i A",
+                            strtotime(
+                                $event["end_time"]
+                            )
+                        );
+                        ?>
+
+                        <br>
+
+
+                        📍
+
+                        <?php
+                        echo htmlspecialchars(
+                            $event["venue"]
+                        );
+                        ?>
+
+
+                        <?php if (!empty($event["team_name"])): ?>
+
+                            <br>
+
+                            <span class="event-team">
+
+                                Organized by:
+
+                                <?php
+                                echo htmlspecialchars(
+                                    $event["team_name"]
+                                );
+                                ?>
+
+                            </span>
+
+                        <?php endif; ?>
+
+
+                    </div>
+
+
+                    <div class="event-buttons">
+
+
+                        <a
+                            href="../event-details.php?event_id=<?php echo $event["event_id"]; ?>"
+                            class="view-btn">
+
+                            View Details
+
+                        </a>
+
+
+                        <a
+                            href="../registration.php?event_id=<?php echo $event["event_id"]; ?>"
+                            class="register-btn">
+
+                            Register / Participate
+
+                        </a>
+
+
+                    </div>
+
+
+                </div>
+
+            <?php endforeach; ?>
+
+
+        </div>
+
+
+    <?php else: ?>
+
+
+        <p class="empty">
+
+            No other approved events available right now.
+
+        </p>
+
+
+    <?php endif; ?>
+
+
+</div>
+<!-- =========================
+     QUICK ACTIONS
+========================= -->
+
+<div class="section">
+
+    <h2>
+        ⚡ Quick Actions
+    </h2>
+
+
+    <div class="quick-actions">
+
+
+        <a
+            href="event_request.php"
+            class="action">
+
+            ➕ Create Event Request
+
+        </a>
+
+
+        <a
+            href="approval_status.php"
+            class="action">
+
+            📋 Approval Status
+
+        </a>
+
+
+        <a
+            href="planning.php"
+            class="action">
+
+            🗓️ Event Planning
+
+        </a>
+
+
+        <a
+            href="../events.php"
+            class="action">
+
+            🎓 Browse All Events
+
+        </a>
+
+
+        <a
+            href="../student_dashboard.php"
+            class="action">
+
+            🎓 Student Dashboard
+
+        </a>
+
 
     </div>
 
 </div>
+<!-- =========================
+     RECENT ACTIVITY
+========================= -->
+
+<div class="section">
+
+    <h2>
+        🕒 Recent Activity
+    </h2>
 
 
+    <div class="activity-list">
+
+
+        <div class="activity-item">
+
+            <span class="activity-icon">
+                📌
+            </span>
+
+            <div>
+
+                <strong>
+                    My Team Events
+                </strong>
+
+                <p>
+                    <?php echo count($my_events); ?>
+                    event(s) currently linked to your
+                    organizing team.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <div class="activity-item">
+
+            <span class="activity-icon">
+                🌐
+            </span>
+
+            <div>
+
+                <strong>
+                    Other Approved Events
+                </strong>
+
+                <p>
+                    <?php echo count($other_events); ?>
+                    approved event(s) available for
+                    viewing and participation.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <div class="activity-item">
+
+            <span class="activity-icon">
+                👥
+            </span>
+
+            <div>
+
+                <strong>
+                    Participants
+                </strong>
+
+                <p>
+                    <?php echo $total_participants; ?>
+                    participant(s) registered for your
+                    team events.
+                </p>
+
+            </div>
+
+        </div>
+
+
+        <div class="activity-item">
+
+            <span class="activity-icon">
+                🔔
+            </span>
+
+            <div>
+
+                <strong>
+                    Stage Notifications
+                </strong>
+
+                <p>
+
+                    <?php echo count($stage_notifications); ?>
+
+                    stage-ready notification(s) received.
+
+                </p>
+
+            </div>
+
+        </div>
+
+
+    </div>
+
+</div>
+<!-- =========================
+     EVENT SELECT MODAL
+========================= -->
+
+<div
+    id="eventSelectModal"
+    class="modal-overlay"
+    style="display:none;"
+>
+
+    <div class="modal-box">
+
+        <button
+            type="button"
+            class="modal-close"
+            onclick="closeEventModal();">
+
+            ×
+
+        </button>
+
+
+        <h2>
+            Select Event
+        </h2>
+
+
+        <p class="modal-description">
+
+            Select the event you want to manage.
+
+        </p>
+
+
+        <div class="event-select-list">
+
+
+            <?php if (count($organizer_events) > 0): ?>
+
+
+                <?php foreach ($organizer_events as $event): ?>
+
+                    <button
+                        type="button"
+                        class="event-select-item"
+                        onclick="selectEvent(
+                            <?php echo (int)$event["event_id"]; ?>
+                        );"
+                    >
+
+                        <span class="event-select-name">
+
+                            <?php
+                            echo htmlspecialchars(
+                                $event["event_name"]
+                            );
+                            ?>
+
+                        </span>
+
+
+                        <span class="event-select-date">
+
+                            📅
+
+                            <?php
+                            echo date(
+                                "d M Y",
+                                strtotime(
+                                    $event["event_date"]
+                                )
+                            );
+                            ?>
+
+                        </span>
+
+                    </button>
+
+                <?php endforeach; ?>
+
+
+            <?php else: ?>
+
+
+                <p class="empty">
+
+                    No team events available.
+
+                </p>
+
+
+            <?php endif; ?>
+
+
+        </div>
+
+    </div>
+
+</div>
 <script>
 
-let selectedModule = "";
+    /* =========================
+       EVENT SELECT MODAL
+    ========================= */
 
+    function openEventModal() {
 
-/* =========================
-   OPEN EVENT SELECTOR
-========================= */
+        const modal = document.getElementById(
+            "eventSelectModal"
+        );
 
-function openEventSelector(module) {
+        if (modal) {
 
-    selectedModule = module;
+            modal.style.display = "flex";
 
-    const modal =
-        document.getElementById("eventModal");
-
-    const title =
-        document.getElementById("modalTitle");
-
-    const description =
-        document.getElementById("modalDescription");
-
-
-    if (module === "brochure") {
-
-        title.innerText =
-            "📄 Select Event for Brochure";
-
-        description.innerText =
-            "Choose one of your team's events whose brochure you want to upload or view.";
+        }
 
     }
 
 
-    if (module === "checklist") {
+    function closeEventModal() {
 
-        title.innerText =
-            "✅ Select Event for Checklist";
+        const modal = document.getElementById(
+            "eventSelectModal"
+        );
 
-        description.innerText =
-            "Choose one of your team's events whose preparation checklist you want to open.";
+        if (modal) {
+
+            modal.style.display = "none";
+
+        }
 
     }
 
 
-    modal.style.display = "flex";
+    /* =========================
+       SELECT EVENT
+    ========================= */
 
-}
+    function selectEvent(eventId) {
 
+        if (!eventId) {
 
-/* =========================
-   CLOSE MODAL
-========================= */
+            return;
 
-function closeEventSelector() {
-
-    document.getElementById(
-        "eventModal"
-    ).style.display = "none";
-
-}
+        }
 
 
-/* =========================
-   CONTINUE
-========================= */
+        const currentAction =
+            window.selectedEventAction;
 
-function continueToModule() {
 
-    const eventId =
+        if (!currentAction) {
+
+            closeEventModal();
+
+            return;
+
+        }
+
+
+        if (currentAction === "brochure") {
+
+            window.location.href =
+                "brochure_upload.php?event_id="
+                + eventId;
+
+        }
+
+
+        else if (currentAction === "checklist") {
+
+            window.location.href =
+                "checklist.php?event_id="
+                + eventId;
+
+        }
+
+
+        else if (currentAction === "participants") {
+
+            window.location.href =
+                "participants.php?event_id="
+                + eventId;
+
+        }
+
+
+        else if (currentAction === "attendance") {
+
+            window.location.href =
+                "scan_qr.php?event_id="
+                + eventId;
+
+        }
+
+
+        else if (currentAction === "expenses") {
+
+            window.location.href =
+                "expenses.php?event_id="
+                + eventId;
+
+        }
+
+
+        else if (currentAction === "reports") {
+
+            window.location.href =
+                "reports.php?event_id="
+                + eventId;
+
+        }
+
+
+        closeEventModal();
+
+    }
+
+
+    /* =========================
+       EVENT ACTION
+    ========================= */
+
+    function selectEventAction(action) {
+
+        window.selectedEventAction = action;
+
+        openEventModal();
+
+    }
+
+
+    /* =========================
+       CLOSE MODAL WHEN CLICKING
+       OUTSIDE THE MODAL BOX
+    ========================= */
+
+    const eventModal =
         document.getElementById(
-            "selectedEvent"
-        ).value;
+            "eventSelectModal"
+        );
 
 
-    if (eventId === "") {
+    if (eventModal) {
 
-        alert("Please select an event.");
+        eventModal.addEventListener(
+            "click",
+            function(event) {
 
-        return;
+                if (
+                    event.target === eventModal
+                ) {
 
-    }
+                    closeEventModal();
 
+                }
 
-    if (selectedModule === "brochure") {
-
-        window.location.href =
-            "brochure_upload.php?event_id="
-            + eventId;
-
-    }
-
-
-    if (selectedModule === "checklist") {
-
-        window.location.href =
-            "checklist.php?event_id="
-            + eventId;
+            }
+        );
 
     }
 
-}
 
+    /* =========================
+       ESC KEY
+    ========================= */
 
-/* =========================
-   CLOSE WHEN CLICKING OUTSIDE
-========================= */
+    document.addEventListener(
+        "keydown",
+        function(event) {
 
-window.onclick = function(event) {
+            if (event.key === "Escape") {
 
-    const modal =
-        document.getElementById("eventModal");
+                closeEventModal();
 
+            }
 
-    if (event.target === modal) {
-
-        closeEventSelector();
-
-    }
-
-};
+        }
+    );
 
 </script>
 
+
+</main>
 
 </body>
 

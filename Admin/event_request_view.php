@@ -16,40 +16,153 @@ if ($event_id <= 0) {
 }
 
 
-/* =========================
+/* =========================================================
    HANDLE APPROVE / CORRECTION
-========================= */
+========================================================= */
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
     $action = $_POST["action"] ?? "";
 
 
-    /* APPROVE EVENT */
+    /* =====================================================
+       APPROVE EVENT
+    ===================================================== */
 
     if ($action === "approve") {
 
-        $stmt = $conn->prepare("
-            UPDATE events
-            SET request_status = 'approved',
-                correction_reason = NULL
+        /*
+         * Fetch organizer request linked to this event.
+         */
+
+        $request_id = null;
+
+        $request_stmt = $conn->prepare("
+            SELECT organizer_request_id
+            FROM events
             WHERE event_id = ?
         ");
 
-        $stmt->bind_param("i", $event_id);
-        $stmt->execute();
-        $stmt->close();
+        $request_stmt->bind_param("i", $event_id);
+        $request_stmt->execute();
 
-        header("Location: event_request_view.php?event_id=$event_id&success=approved");
-        exit();
+        $request_result = $request_stmt->get_result();
+
+        if ($request_result->num_rows === 1) {
+
+            $request_row = $request_result->fetch_assoc();
+
+            if (!empty($request_row["organizer_request_id"])) {
+                $request_id = (int)$request_row["organizer_request_id"];
+            }
+        }
+
+        $request_stmt->close();
+
+
+        /*
+         * Use transaction so that:
+         *
+         * Event approval
+         * +
+         * Organizer team approval
+         *
+         * happen together.
+         */
+
+        $conn->begin_transaction();
+
+        try {
+
+            /* ---------------------------------------------
+               APPROVE EVENT
+            --------------------------------------------- */
+
+            $stmt = $conn->prepare("
+                UPDATE events
+                SET request_status = 'approved',
+                    correction_reason = NULL
+                WHERE event_id = ?
+            ");
+
+            $stmt->bind_param("i", $event_id);
+            $stmt->execute();
+            $stmt->close();
+
+
+            /* ---------------------------------------------
+               APPROVE ORGANIZER REQUEST
+               Only when this event is linked to a team.
+            --------------------------------------------- */
+
+            if ($request_id !== null) {
+
+                $team_stmt = $conn->prepare("
+                    UPDATE organizer_requests
+                    SET status = 'approved',
+                        reviewed_at = CURRENT_TIMESTAMP
+                    WHERE request_id = ?
+                ");
+
+                $team_stmt->bind_param("i", $request_id);
+                $team_stmt->execute();
+                $team_stmt->close();
+            }
+
+
+            /* ---------------------------------------------
+               STAGE MANAGEMENT
+               pending → assigned
+            --------------------------------------------- */
+
+            $stage_stmt = $conn->prepare("
+                UPDATE stage_bookings
+                SET booking_status = 'assigned'
+                WHERE event_id = ?
+                  AND booking_status = 'pending'
+            ");
+
+            $stage_stmt->bind_param("i", $event_id);
+            $stage_stmt->execute();
+            $stage_stmt->close();
+
+
+            $conn->commit();
+
+            header(
+                "Location: event_request_view.php?event_id="
+                . $event_id
+                . "&success=approved"
+            );
+
+            exit();
+
+        } catch (Exception $e) {
+
+            $conn->rollback();
+
+            header(
+                "Location: event_request_view.php?event_id="
+                . $event_id
+                . "&error=approve_failed"
+            );
+
+            exit();
+        }
     }
 
 
-    /* RETURN FOR CORRECTION */
+    /* =====================================================
+       RETURN FOR CORRECTION
+    ===================================================== */
 
     if ($action === "correction") {
 
         $selected_reasons = $_POST["correction_reasons"] ?? [];
+
+        if (!is_array($selected_reasons)) {
+            $selected_reasons = [];
+        }
 
         $selected_reasons = array_map("trim", $selected_reasons);
         $selected_reasons = array_filter($selected_reasons);
@@ -59,8 +172,20 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         $other_reason = trim($_POST["other_reason"] ?? "");
 
-
         if (!empty($other_reason)) {
+
+            /*
+             * Remove the generic "Other" checkbox text
+             * because the actual reason is stored below.
+             */
+
+            $selected_reasons = array_filter(
+                $selected_reasons,
+                function ($reason) {
+                    return $reason !== "Other";
+                }
+            );
+
             $selected_reasons[] = "Other: " . $other_reason;
         }
 
@@ -72,7 +197,12 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
         if (empty($selected_reasons)) {
 
-            header("Location: event_request_view.php?event_id=$event_id&error=reason_required");
+            header(
+                "Location: event_request_view.php?event_id="
+                . $event_id
+                . "&error=reason_required"
+            );
+
             exit();
         }
 
@@ -82,29 +212,130 @@ if ($_SERVER["REQUEST_METHOD"] === "POST") {
         $correction_reason = implode(", ", $selected_reasons);
 
 
-        $stmt = $conn->prepare("
-            UPDATE events
-            SET request_status = 'correction_required',
-                correction_reason = ?
+        /*
+         * Find linked organizer request.
+         */
+
+        $request_id = null;
+
+        $request_stmt = $conn->prepare("
+            SELECT organizer_request_id
+            FROM events
             WHERE event_id = ?
         ");
 
-        $stmt->bind_param("si", $correction_reason, $event_id);
+        $request_stmt->bind_param("i", $event_id);
+        $request_stmt->execute();
 
-        $stmt->execute();
+        $request_result = $request_stmt->get_result();
 
-        $stmt->close();
+        if ($request_result->num_rows === 1) {
+
+            $request_row = $request_result->fetch_assoc();
+
+            if (!empty($request_row["organizer_request_id"])) {
+                $request_id = (int)$request_row["organizer_request_id"];
+            }
+        }
+
+        $request_stmt->close();
 
 
-        header("Location: event_request_view.php?event_id=$event_id&success=correction");
-        exit();
+        /*
+         * Event + organizer request are updated together.
+         */
+
+        $conn->begin_transaction();
+
+        try {
+
+            /* ---------------------------------------------
+               EVENT → CORRECTION REQUIRED
+            --------------------------------------------- */
+
+            $stmt = $conn->prepare("
+                UPDATE events
+                SET request_status = 'correction_required',
+                    correction_reason = ?
+                WHERE event_id = ?
+            ");
+
+            $stmt->bind_param(
+                "si",
+                $correction_reason,
+                $event_id
+            );
+
+            $stmt->execute();
+            $stmt->close();
+
+
+            /* ---------------------------------------------
+               ORGANIZER REQUEST → CORRECTION REQUIRED
+               Only when linked.
+            --------------------------------------------- */
+
+            if ($request_id !== null) {
+
+                $team_stmt = $conn->prepare("
+                    UPDATE organizer_requests
+                    SET status = 'correction_required',
+                        reviewed_at = CURRENT_TIMESTAMP
+                    WHERE request_id = ?
+                ");
+
+                $team_stmt->bind_param("i", $request_id);
+                $team_stmt->execute();
+                $team_stmt->close();
+            }
+
+
+            /* ---------------------------------------------
+               STAGE
+               assigned → pending
+            --------------------------------------------- */
+
+            $stage_stmt = $conn->prepare("
+                UPDATE stage_bookings
+                SET booking_status = 'pending'
+                WHERE event_id = ?
+                  AND booking_status = 'assigned'
+            ");
+
+            $stage_stmt->bind_param("i", $event_id);
+            $stage_stmt->execute();
+            $stage_stmt->close();
+
+
+            $conn->commit();
+
+            header(
+                "Location: event_request_view.php?event_id="
+                . $event_id
+                . "&success=correction"
+            );
+
+            exit();
+
+        } catch (Exception $e) {
+
+            $conn->rollback();
+
+            header(
+                "Location: event_request_view.php?event_id="
+                . $event_id
+                . "&error=correction_failed"
+            );
+
+            exit();
+        }
     }
 }
 
 
-/* =========================
+/* =========================================================
    FETCH EVENT DETAILS
-========================= */
+========================================================= */
 
 $stmt = $conn->prepare("
     SELECT
@@ -120,20 +351,121 @@ $stmt = $conn->prepare("
 ");
 
 $stmt->bind_param("i", $event_id);
-
 $stmt->execute();
 
 $result = $stmt->get_result();
-
 
 if ($result->num_rows === 0) {
     die("Event request not found.");
 }
 
-
 $event = $result->fetch_assoc();
 
 $stmt->close();
+
+
+/* =========================================================
+   FETCH ORGANIZER TEAM
+========================================================= */
+
+$organizer_request = null;
+$team_members = [];
+
+
+if (!empty($event["organizer_request_id"])) {
+
+    $request_id = (int)$event["organizer_request_id"];
+
+
+    /* TEAM REQUEST */
+
+    $team_stmt = $conn->prepare("
+        SELECT
+            request_id,
+            requested_by,
+            team_name,
+            reason,
+            status,
+            created_at,
+            reviewed_at
+        FROM organizer_requests
+        WHERE request_id = ?
+    ");
+
+    $team_stmt->bind_param("i", $request_id);
+    $team_stmt->execute();
+
+    $team_result = $team_stmt->get_result();
+
+    if ($team_result->num_rows > 0) {
+        $organizer_request = $team_result->fetch_assoc();
+    }
+
+    $team_stmt->close();
+
+
+    /* TEAM MEMBERS */
+
+    $member_stmt = $conn->prepare("
+        SELECT
+            tm.team_member_id,
+            tm.user_id,
+            tm.member_role,
+            tm.joined_at,
+            u.name,
+            u.email,
+            u.phone,
+            u.department,
+            u.student_id
+        FROM organizer_team_members tm
+        INNER JOIN users u
+            ON tm.user_id = u.id
+        WHERE tm.request_id = ?
+        ORDER BY tm.team_member_id ASC
+    ");
+
+    $member_stmt->bind_param("i", $request_id);
+    $member_stmt->execute();
+
+    $member_result = $member_stmt->get_result();
+
+    while ($member_row = $member_result->fetch_assoc()) {
+        $team_members[] = $member_row;
+    }
+
+    $member_stmt->close();
+}
+
+
+/* =========================================================
+   FETCH STAGE BOOKING
+========================================================= */
+
+$stage_booking = null;
+
+$stage_stmt = $conn->prepare("
+    SELECT
+        sb.*,
+        s.stage_name,
+        s.location AS stage_location
+    FROM stage_bookings sb
+    LEFT JOIN stages s
+        ON sb.stage_id = s.stage_id
+    WHERE sb.event_id = ?
+    ORDER BY sb.booking_id DESC
+    LIMIT 1
+");
+
+$stage_stmt->bind_param("i", $event_id);
+$stage_stmt->execute();
+
+$stage_result = $stage_stmt->get_result();
+
+if ($stage_result->num_rows > 0) {
+    $stage_booking = $stage_result->fetch_assoc();
+}
+
+$stage_stmt->close();
 
 ?>
 
@@ -147,7 +479,6 @@ $stmt->close();
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>Event Request Review | EventHub</title>
-
 
 <style>
 
@@ -256,19 +587,16 @@ body {
 
 .success {
     background: #dcfce7;
-
     color: #166534;
 }
 
 .warning {
     background: #fef3c7;
-
     color: #92400e;
 }
 
 .error {
     background: #fee2e2;
-
     color: #991b1b;
 }
 
@@ -353,20 +681,58 @@ body {
 
 .pending {
     background: #fef3c7;
-
     color: #92400e;
 }
 
 .approved {
     background: #dcfce7;
-
     color: #166534;
 }
 
 .correction {
     background: #fee2e2;
-
     color: #991b1b;
+}
+
+.assigned {
+    background: #ffedd5;
+    color: #c2410c;
+}
+
+.booked {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+
+/* TEAM */
+
+.team-status {
+    margin-bottom: 20px;
+}
+
+.team-member {
+    background: #f8fafc;
+
+    border: 1px solid #e2e8f0;
+
+    padding: 15px;
+
+    border-radius: 8px;
+
+    margin-bottom: 10px;
+}
+
+.team-member strong {
+    color: #1e3a8a;
+}
+
+.member-role {
+    color: #64748b;
+
+    font-size: 13px;
+
+    margin-top: 5px;
 }
 
 
@@ -398,9 +764,7 @@ body {
 /* DROPDOWN */
 
 .dropdown {
-
     position: relative;
-
     width: 100%;
 }
 
@@ -426,10 +790,8 @@ body {
 }
 
 .dropdown-button:hover {
-
     border-color: #f59e0b;
 }
-
 
 .dropdown-content {
 
@@ -455,10 +817,8 @@ body {
 }
 
 .dropdown-content.show {
-
     display: block;
 }
-
 
 .checkbox-item {
 
@@ -472,12 +832,10 @@ body {
 }
 
 .checkbox-item:hover {
-
     background: #f8fafc;
 }
 
 .checkbox-item input {
-
     margin-right: 9px;
 }
 
@@ -492,7 +850,6 @@ body {
 }
 
 .other-box.show {
-
     display: block;
 }
 
@@ -580,7 +937,6 @@ body {
 }
 
 .approve:hover {
-
     background: #15803d;
 }
 
@@ -592,7 +948,6 @@ body {
 }
 
 .correction-btn:hover {
-
     background: #d97706;
 }
 
@@ -608,7 +963,6 @@ body {
 }
 
 .back:hover {
-
     background: #cbd5e1;
 }
 
@@ -634,7 +988,6 @@ body {
 </style>
 
 </head>
-
 
 <body>
 
@@ -672,7 +1025,6 @@ body {
 </div>
 
 
-
 <!-- MAIN -->
 
 <div class="main">
@@ -691,48 +1043,120 @@ body {
     </div>
 
 
+    <!-- SUCCESS -->
 
-    <!-- SUCCESS MESSAGE -->
-
-    <?php if (isset($_GET["success"]) && $_GET["success"] === "approved"): ?>
+    <?php if (
+        isset($_GET["success"])
+        && $_GET["success"] === "approved"
+    ): ?>
 
         <div class="message success">
+
             ✅ Event request approved successfully.
+
+            <?php if ($organizer_request): ?>
+
+                <br>
+                👥 Organizer team
+                <strong>
+                    <?php echo htmlspecialchars($organizer_request["team_name"]); ?>
+                </strong>
+                has also been approved.
+
+            <?php endif; ?>
+
+            <?php if ($stage_booking): ?>
+
+                <br>
+                🎭 Stage assignment is now
+                <strong>Assigned</strong> 🟠.
+
+            <?php endif; ?>
+
         </div>
 
     <?php endif; ?>
 
 
-    <?php if (isset($_GET["success"]) && $_GET["success"] === "correction"): ?>
+    <!-- CORRECTION -->
+
+    <?php if (
+        isset($_GET["success"])
+        && $_GET["success"] === "correction"
+    ): ?>
 
         <div class="message warning">
+
             ⚠️ Event returned to organizer for correction.
+
+            <?php if ($organizer_request): ?>
+
+                <br>
+                👥 The linked organizer team request has also been
+                marked for correction.
+
+            <?php endif; ?>
+
         </div>
 
     <?php endif; ?>
 
 
-    <!-- ERROR -->
+    <!-- ERRORS -->
 
-    <?php if (isset($_GET["error"]) && $_GET["error"] === "reason_required"): ?>
+    <?php if (
+        isset($_GET["error"])
+        && $_GET["error"] === "reason_required"
+    ): ?>
 
         <div class="message error">
+
             ❌ Please select at least one correction reason.
+
         </div>
 
     <?php endif; ?>
 
 
+    <?php if (
+        isset($_GET["error"])
+        && $_GET["error"] === "approve_failed"
+    ): ?>
 
-    <!-- EVENT INFORMATION -->
+        <div class="message error">
+
+            ❌ Approval could not be completed.
+            Please try again.
+
+        </div>
+
+    <?php endif; ?>
+
+
+    <?php if (
+        isset($_GET["error"])
+        && $_GET["error"] === "correction_failed"
+    ): ?>
+
+        <div class="message error">
+
+            ❌ The correction request could not be saved.
+            Please try again.
+
+        </div>
+
+    <?php endif; ?>
+
+
+    <!-- =====================================================
+         EVENT INFORMATION
+    ====================================================== -->
 
     <div class="card">
 
         <h2>📋 Event Information</h2>
 
-
         <div class="details">
-
 
             <div class="detail">
 
@@ -773,11 +1197,17 @@ body {
 
                 <span>
 
-                    <?php echo date("h:i A", strtotime($event["start_time"])); ?>
+                    <?php echo date(
+                        "h:i A",
+                        strtotime($event["start_time"])
+                    ); ?>
 
                     -
 
-                    <?php echo date("h:i A", strtotime($event["end_time"])); ?>
+                    <?php echo date(
+                        "h:i A",
+                        strtotime($event["end_time"])
+                    ); ?>
 
                 </span>
 
@@ -800,7 +1230,10 @@ body {
                 <label>Registration Fee</label>
 
                 <span>
-                    ₹<?php echo number_format((float)$event["fee"], 2); ?>
+                    ₹<?php echo number_format(
+                        (float)$event["fee"],
+                        2
+                    ); ?>
                 </span>
 
             </div>
@@ -811,7 +1244,11 @@ body {
                 <label>Description</label>
 
                 <span>
-                    <?php echo nl2br(htmlspecialchars($event["description"] ?? "-")); ?>
+                    <?php echo nl2br(
+                        htmlspecialchars(
+                            $event["description"] ?? "-"
+                        )
+                    ); ?>
                 </span>
 
             </div>
@@ -822,7 +1259,11 @@ body {
                 <label>Objective</label>
 
                 <span>
-                    <?php echo nl2br(htmlspecialchars($event["objective"] ?? "-")); ?>
+                    <?php echo nl2br(
+                        htmlspecialchars(
+                            $event["objective"] ?? "-"
+                        )
+                    ); ?>
                 </span>
 
             </div>
@@ -833,7 +1274,9 @@ body {
                 <label>Expected Participants</label>
 
                 <span>
-                    <?php echo htmlspecialchars($event["expected_participants"] ?? "-"); ?>
+                    <?php echo htmlspecialchars(
+                        $event["expected_participants"] ?? "-"
+                    ); ?>
                 </span>
 
             </div>
@@ -844,7 +1287,9 @@ body {
                 <label>Guest Details</label>
 
                 <span>
-                    <?php echo htmlspecialchars($event["guest_details"] ?? "-"); ?>
+                    <?php echo htmlspecialchars(
+                        $event["guest_details"] ?? "-"
+                    ); ?>
                 </span>
 
             </div>
@@ -855,7 +1300,11 @@ body {
                 <label>Requirements</label>
 
                 <span>
-                    <?php echo nl2br(htmlspecialchars($event["requirements"] ?? "-")); ?>
+                    <?php echo nl2br(
+                        htmlspecialchars(
+                            $event["requirements"] ?? "-"
+                        )
+                    ); ?>
                 </span>
 
             </div>
@@ -869,18 +1318,27 @@ body {
 
                     <?php
 
-                    if ($event["request_status"] === "approved") {
+                    if (
+                        $event["request_status"] === "approved"
+                    ) {
 
-                        echo '<span class="status approved">Approved</span>';
+                        echo '<span class="status approved">
+                                Approved
+                              </span>';
 
-                    } elseif ($event["request_status"] === "correction_required") {
+                    } elseif (
+                        $event["request_status"] === "correction_required"
+                    ) {
 
-                        echo '<span class="status correction">Correction Required</span>';
+                        echo '<span class="status correction">
+                                Correction Required
+                              </span>';
 
                     } else {
 
-                        echo '<span class="status pending">Pending</span>';
-
+                        echo '<span class="status pending">
+                                Pending
+                              </span>';
                     }
 
                     ?>
@@ -889,8 +1347,6 @@ body {
 
             </div>
 
-
-            <!-- EXISTING CORRECTION REASON -->
 
             <?php if (
                 $event["request_status"] === "correction_required"
@@ -902,36 +1358,335 @@ body {
                     <label>Correction Reason</label>
 
                     <span>
-                        <?php echo nl2br(htmlspecialchars($event["correction_reason"])); ?>
+                        <?php echo nl2br(
+                            htmlspecialchars(
+                                $event["correction_reason"]
+                            )
+                        ); ?>
                     </span>
 
                 </div>
 
             <?php endif; ?>
 
-
         </div>
 
     </div>
 
 
+    <!-- =====================================================
+         ORGANIZER TEAM
+    ====================================================== -->
 
-    <!-- ORGANIZER INFORMATION -->
+    <?php if ($organizer_request): ?>
+
+        <div class="card">
+
+            <h2>👥 Organizer Team</h2>
+
+
+            <div class="details">
+
+                <div class="detail">
+
+                    <label>Team Name</label>
+
+                    <span>
+                        <?php echo htmlspecialchars(
+                            $organizer_request["team_name"]
+                        ); ?>
+                    </span>
+
+                </div>
+
+
+                <div class="detail">
+
+                    <label>Team Request Status</label>
+
+                    <span>
+
+                        <?php
+
+                        if (
+                            $organizer_request["status"] === "approved"
+                        ) {
+
+                            echo '<span class="status approved">
+                                    Approved
+                                  </span>';
+
+                        } elseif (
+                            $organizer_request["status"] === "correction_required"
+                        ) {
+
+                            echo '<span class="status correction">
+                                    Correction Required
+                                  </span>';
+
+                        } else {
+
+                            echo '<span class="status pending">
+                                    Pending
+                                  </span>';
+                        }
+
+                        ?>
+
+                    </span>
+
+                </div>
+
+
+                <div class="detail full">
+
+                    <label>Reason / Purpose</label>
+
+                    <span>
+                        <?php echo nl2br(
+                            htmlspecialchars(
+                                $organizer_request["reason"] ?? "-"
+                            )
+                        ); ?>
+                    </span>
+
+                </div>
+
+
+                <div class="detail">
+
+                    <label>Submitted On</label>
+
+                    <span>
+                        <?php echo htmlspecialchars(
+                            $organizer_request["created_at"] ?? "-"
+                        ); ?>
+                    </span>
+
+                </div>
+
+            </div>
+
+
+            <?php if (!empty($team_members)): ?>
+
+                <h3 style="margin-top:25px;margin-bottom:15px;color:#1e3a8a;">
+                    Team Members
+                </h3>
+
+
+                <?php foreach ($team_members as $member): ?>
+
+                    <div class="team-member">
+
+                        <strong>
+                            <?php echo htmlspecialchars(
+                                $member["name"]
+                            ); ?>
+                        </strong>
+
+                        <div class="member-role">
+
+                            Role:
+                            <?php echo htmlspecialchars(
+                                $member["member_role"] ?? "Member"
+                            ); ?>
+
+                            <br>
+
+                            Student ID:
+                            <?php echo htmlspecialchars(
+                                $member["student_id"] ?? "-"
+                            ); ?>
+
+                            <br>
+
+                            Department:
+                            <?php echo htmlspecialchars(
+                                $member["department"] ?? "-"
+                            ); ?>
+
+                            <br>
+
+                            Email:
+                            <?php echo htmlspecialchars(
+                                $member["email"] ?? "-"
+                            ); ?>
+
+                        </div>
+
+                    </div>
+
+                <?php endforeach; ?>
+
+            <?php endif; ?>
+
+        </div>
+
+    <?php endif; ?>
+
+
+    <!-- =====================================================
+         STAGE INFORMATION
+    ====================================================== -->
+
+    <div class="card">
+
+        <h2>🎭 Stage Booking</h2>
+
+        <?php if ($stage_booking): ?>
+
+            <div class="details">
+
+                <div class="detail">
+
+                    <label>Stage</label>
+
+                    <span>
+                        <?php echo htmlspecialchars(
+                            $stage_booking["stage_name"] ?? "-"
+                        ); ?>
+                    </span>
+
+                </div>
+
+
+                <div class="detail">
+
+                    <label>Venue</label>
+
+                    <span>
+                        <?php echo htmlspecialchars(
+                            $stage_booking["stage_location"]
+                            ?? $event["venue"]
+                            ?? "-"
+                        ); ?>
+                    </span>
+
+                </div>
+
+
+                <div class="detail">
+
+                    <label>Date</label>
+
+                    <span>
+                        <?php echo htmlspecialchars(
+                            $stage_booking["booking_date"] ?? "-"
+                        ); ?>
+                    </span>
+
+                </div>
+
+
+                <div class="detail">
+
+                    <label>Time</label>
+
+                    <span>
+
+                        <?php echo date(
+                            "h:i A",
+                            strtotime(
+                                $stage_booking["start_time"]
+                            )
+                        ); ?>
+
+                        -
+
+                        <?php echo date(
+                            "h:i A",
+                            strtotime(
+                                $stage_booking["end_time"]
+                            )
+                        ); ?>
+
+                    </span>
+
+                </div>
+
+
+                <div class="detail">
+
+                    <label>Stage Status</label>
+
+                    <span>
+
+                        <?php
+
+                        $booking_status =
+                            $stage_booking["booking_status"]
+                            ?? "pending";
+
+
+                        if ($booking_status === "booked") {
+
+                            echo '<span class="status booked">
+                                    🔴 Booked
+                                  </span>';
+
+                        } elseif (
+                            $booking_status === "assigned"
+                        ) {
+
+                            echo '<span class="status assigned">
+                                    🟠 Assigned
+                                  </span>';
+
+                        } elseif (
+                            $booking_status === "rejected"
+                        ) {
+
+                            echo '<span class="status correction">
+                                    ❌ Rejected
+                                  </span>';
+
+                        } else {
+
+                            echo '<span class="status pending">
+                                    🟡 Pending
+                                  </span>';
+                        }
+
+                        ?>
+
+                    </span>
+
+                </div>
+
+            </div>
+
+        <?php else: ?>
+
+            <div class="message warning">
+
+                ℹ️ No stage booking has been selected for this event.
+
+            </div>
+
+        <?php endif; ?>
+
+    </div>
+
+
+    <!-- =====================================================
+         ORGANIZER INFORMATION
+    ====================================================== -->
 
     <div class="card">
 
         <h2>👨‍💼 Organizer Information</h2>
 
-
         <div class="details">
-
 
             <div class="detail">
 
                 <label>Name</label>
 
                 <span>
-                    <?php echo htmlspecialchars($event["organizer_name"] ?? "Unknown"); ?>
+                    <?php echo htmlspecialchars(
+                        $event["organizer_name"] ?? "Unknown"
+                    ); ?>
                 </span>
 
             </div>
@@ -942,7 +1697,9 @@ body {
                 <label>Email</label>
 
                 <span>
-                    <?php echo htmlspecialchars($event["organizer_email"] ?? "-"); ?>
+                    <?php echo htmlspecialchars(
+                        $event["organizer_email"] ?? "-"
+                    ); ?>
                 </span>
 
             </div>
@@ -953,7 +1710,9 @@ body {
                 <label>Phone</label>
 
                 <span>
-                    <?php echo htmlspecialchars($event["organizer_phone"] ?? "-"); ?>
+                    <?php echo htmlspecialchars(
+                        $event["organizer_phone"] ?? "-"
+                    ); ?>
                 </span>
 
             </div>
@@ -964,48 +1723,59 @@ body {
                 <label>Department</label>
 
                 <span>
-                    <?php echo htmlspecialchars($event["organizer_department"] ?? "-"); ?>
+                    <?php echo htmlspecialchars(
+                        $event["organizer_department"] ?? "-"
+                    ); ?>
                 </span>
 
             </div>
 
-
         </div>
 
 
+        <!-- =================================================
+             ADMIN ACTIONS
+        ================================================== -->
 
-        <!-- ACTIONS -->
+        <?php if (
+            $event["request_status"] === "pending"
+            || $event["request_status"] === "correction_required"
+        ): ?>
 
-        <?php if ($event["request_status"] === "pending"): ?>
+            <?php if (
+                $event["request_status"] === "pending"
+            ): ?>
+
+                <!-- APPROVE -->
+
+                <div class="actions">
+
+                    <form method="POST">
+
+                        <input
+                            type="hidden"
+                            name="action"
+                            value="approve"
+                        >
+
+                        <button
+                            type="submit"
+                            class="btn approve"
+                            onclick="return confirm(
+                                'Approve this event request?'
+                            );"
+                        >
+                            ✅ Approve Event
+                        </button>
+
+                    </form>
+
+                </div>
+
+            <?php endif; ?>
 
 
-            <!-- APPROVE FORM -->
-
-            <div class="actions">
-
-                <form method="POST">
-
-                    <input
-                        type="hidden"
-                        name="action"
-                        value="approve"
-                    >
-
-                    <button
-                        type="submit"
-                        class="btn approve"
-                        onclick="return confirm('Approve this event request?');"
-                    >
-                        ✅ Approve Event
-                    </button>
-
-                </form>
-
-            </div>
-
-
-
-            <!-- CORRECTION FORM -->
+            <!-- CORRECTION -->
 
             <form
                 method="POST"
@@ -1026,8 +1796,6 @@ body {
                     </h3>
 
 
-                    <!-- MULTI SELECT DROPDOWN -->
-
                     <div class="dropdown">
 
                         <button
@@ -1043,7 +1811,6 @@ body {
                             class="dropdown-content"
                             id="reasonDropdown"
                         >
-
 
                             <label class="checkbox-item">
 
@@ -1157,7 +1924,6 @@ body {
 
                             </label>
 
-
                         </div>
 
                     </div>
@@ -1170,9 +1936,6 @@ body {
                         No reasons selected.
                     </div>
 
-
-
-                    <!-- OTHER TEXT -->
 
                     <div
                         class="other-box"
@@ -1192,7 +1955,6 @@ body {
                     </div>
 
 
-
                     <div class="actions">
 
                         <button
@@ -1205,12 +1967,9 @@ body {
 
                     </div>
 
-
                 </div>
 
-
             </form>
-
 
         <?php endif; ?>
 
@@ -1226,18 +1985,17 @@ body {
 
         </div>
 
-
     </div>
 
 
 </div>
 
 
-
 <script>
 
-
-/* OPEN / CLOSE DROPDOWN */
+/* =========================================================
+   DROPDOWN
+========================================================= */
 
 function toggleDropdown() {
 
@@ -1245,11 +2003,12 @@ function toggleDropdown() {
         document.getElementById("reasonDropdown");
 
     dropdown.classList.toggle("show");
-
 }
 
 
-/* UPDATE SELECTED COUNT */
+/* =========================================================
+   SELECTED COUNT
+========================================================= */
 
 function updateSelection() {
 
@@ -1263,9 +2022,7 @@ function updateSelection() {
     checkboxes.forEach(function(checkbox) {
 
         if (checkbox.checked) {
-
             count++;
-
         }
 
     });
@@ -1284,13 +2041,13 @@ function updateSelection() {
 
         countText.innerText =
             count + " reason(s) selected.";
-
     }
-
 }
 
 
-/* OTHER OPTION */
+/* =========================================================
+   OTHER
+========================================================= */
 
 function toggleOther() {
 
@@ -1317,16 +2074,16 @@ function toggleOther() {
         otherReason.required = false;
 
         otherReason.value = "";
-
     }
 
 
     updateSelection();
-
 }
 
 
-/* VALIDATE FORM */
+/* =========================================================
+   VALIDATE CORRECTION
+========================================================= */
 
 function validateCorrection() {
 
@@ -1341,9 +2098,7 @@ function validateCorrection() {
     checkboxes.forEach(function(checkbox) {
 
         if (checkbox.checked) {
-
             selected = true;
-
         }
 
     });
@@ -1356,7 +2111,6 @@ function validateCorrection() {
         );
 
         return false;
-
     }
 
 
@@ -1380,20 +2134,19 @@ function validateCorrection() {
             );
 
             return false;
-
         }
-
     }
 
 
     return confirm(
         "Return this event to the organizer for correction?"
     );
-
 }
 
 
-/* CLOSE DROPDOWN WHEN CLICKING OUTSIDE */
+/* =========================================================
+   CLOSE DROPDOWN OUTSIDE
+========================================================= */
 
 document.addEventListener(
     "click",
@@ -1402,19 +2155,20 @@ document.addEventListener(
         const dropdown =
             document.querySelector(".dropdown");
 
-        if (!dropdown.contains(event.target)) {
+        if (
+            dropdown
+            && !dropdown.contains(event.target)
+        ) {
 
             document
                 .getElementById("reasonDropdown")
                 .classList.remove("show");
-
         }
 
     }
 );
 
 </script>
-
 
 </body>
 

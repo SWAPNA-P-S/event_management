@@ -90,19 +90,13 @@ if (!$has_organizer_access) {
 
 /* ==========================================
    FETCH EVENTS
-   - Global organizer:
-     own events
-   - Team organizer:
-     events belonging to approved team
 ========================================== */
-
 
 if (
     isset($_SESSION["role"])
     &&
     $_SESSION["role"] === "organizer"
 ) {
-
 
     $stmt = $conn->prepare(
         "SELECT
@@ -111,6 +105,10 @@ if (
             description,
             objective,
             event_date,
+            original_event_date,
+            postponed_from_date,
+            postponement_reason,
+            postponed_at,
             start_time,
             end_time,
             event_type,
@@ -120,27 +118,19 @@ if (
             requirements,
             venue,
             request_status,
+            status,
             correction_reason
          FROM events
          WHERE organizer_id = ?
          ORDER BY event_id DESC"
     );
 
-
     $stmt->bind_param(
         "i",
         $organizer_id
     );
 
-
 } else {
-
-
-    /*
-     * Approved student-organizer:
-     * show events connected to their
-     * approved organizer request.
-     */
 
     $stmt = $conn->prepare(
         "SELECT DISTINCT
@@ -149,6 +139,10 @@ if (
             e.description,
             e.objective,
             e.event_date,
+            e.original_event_date,
+            e.postponed_from_date,
+            e.postponement_reason,
+            e.postponed_at,
             e.start_time,
             e.end_time,
             e.event_type,
@@ -158,6 +152,7 @@ if (
             e.requirements,
             e.venue,
             e.request_status,
+            e.status,
             e.correction_reason
          FROM events e
          INNER JOIN organizer_team_members tm
@@ -168,7 +163,6 @@ if (
          AND r.status = 'approved'
          ORDER BY e.event_id DESC"
     );
-
 
     $stmt->bind_param(
         "i",
@@ -286,6 +280,11 @@ h1 {
     color: #fdba74;
 }
 
+.status-postponed {
+    background: #4c1d95;
+    color: #ddd6fe;
+}
+
 
 /* DETAILS */
 
@@ -311,6 +310,28 @@ h1 {
 .detail-value {
     color: white;
     font-size: 15px;
+}
+
+
+/* POSTPONEMENT INFO */
+
+.postponed-box {
+    background: #24163d;
+    border: 1px solid #6d28d9;
+    border-radius: 10px;
+    padding: 18px;
+    margin-top: 20px;
+}
+
+.postponed-box h3 {
+    margin-top: 0;
+    color: #c4b5fd;
+}
+
+.postponed-box p {
+    color: #ddd6fe;
+    line-height: 1.6;
+    margin-bottom: 8px;
 }
 
 
@@ -345,6 +366,7 @@ h1 {
     font-size: 14px;
     font-weight: bold;
     margin-top: 15px;
+    margin-right: 8px;
 }
 
 .update-btn {
@@ -363,6 +385,15 @@ h1 {
 
 .planning-btn:hover {
     background: #047857;
+}
+
+.postpone-btn {
+    background: #7c3aed;
+    color: white;
+}
+
+.postpone-btn:hover {
+    background: #6d28d9;
 }
 
 
@@ -454,7 +485,24 @@ h1 {
                     $event["request_status"];
 
 
-                if ($status === "approved") {
+                /*
+                 * POSTPONED EVENT
+                 */
+
+                if (
+                    !empty(
+                        $event["postponed_from_date"]
+                    )
+                ) {
+
+                    echo '
+                    <span class="status status-postponed">
+                        ⏸ Postponed
+                    </span>';
+
+                }
+
+                elseif ($status === "approved") {
 
                     echo '
                     <span class="status status-approved">
@@ -666,6 +714,103 @@ h1 {
 
 
 
+            <!-- POSTPONEMENT INFORMATION -->
+
+            <?php
+
+            if (
+                !empty(
+                    $event["postponed_from_date"]
+                )
+            ):
+
+            ?>
+
+                <div class="postponed-box">
+
+                    <h3>
+                        ⏸ Event Postponed
+                    </h3>
+
+                    <p>
+                        This event has been moved from
+                        the previously scheduled date.
+                    </p>
+
+
+                    <?php
+                    if (
+                        !empty(
+                            $event["postponed_from_date"]
+                        )
+                    ):
+                    ?>
+
+                        <p>
+                            <strong>
+                                Previous Date:
+                            </strong>
+
+                            <?php
+
+                            echo htmlspecialchars(
+                                date(
+                                    "d M Y",
+                                    strtotime(
+                                        $event[
+                                            "postponed_from_date"
+                                        ]
+                                    )
+                                )
+                            );
+
+                            ?>
+                        </p>
+
+                    <?php endif; ?>
+
+
+                    <?php
+                    if (
+                        !empty(
+                            $event["postponement_reason"]
+                        )
+                    ):
+                    ?>
+
+                        <p>
+                            <strong>
+                                Reason:
+                            </strong>
+
+                            <?php
+
+                            echo nl2br(
+                                htmlspecialchars(
+                                    $event[
+                                        "postponement_reason"
+                                    ]
+                                )
+                            );
+
+                            ?>
+                        </p>
+
+                    <?php endif; ?>
+
+
+                    <p>
+                        The new event date and related
+                        arrangements must be verified
+                        before the event is finalized.
+                    </p>
+
+                </div>
+
+            <?php endif; ?>
+
+
+
             <!-- CORRECTION SECTION -->
 
             <?php
@@ -742,7 +887,13 @@ h1 {
 
             <?php
 
-            if ($status === "approved"):
+            if (
+                $status === "approved"
+                &&
+                empty(
+                    $event["postponed_from_date"]
+                )
+            ):
 
             ?>
 
@@ -751,6 +902,16 @@ h1 {
                     class="btn planning-btn"
                 >
                     📋 Continue Planning →
+                </a>
+
+
+                <!-- POSTPONEMENT BUTTON -->
+
+                <a
+                    href="postpone_event.php?event_id=<?php echo $event["event_id"]; ?>"
+                    class="btn postpone-btn"
+                >
+                    ⏸ Request Postponement
                 </a>
 
             <?php endif; ?>

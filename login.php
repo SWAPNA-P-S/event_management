@@ -4,75 +4,145 @@ session_start();
 
 include "db.php";
 
+
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
+
+    /* ==========================================
+       GET LOGIN DATA
+    ========================================== */
 
     $email = trim($_POST["email"]);
     $password = $_POST["password"];
 
-    // Check user by email
+
+    /* ==========================================
+       FIND USER
+    ========================================== */
+
     $stmt = $conn->prepare(
-        "SELECT id, name, email, password, role
+        "SELECT
+            id,
+            name,
+            email,
+            password,
+            role
          FROM users
          WHERE email = ?"
     );
 
-    $stmt->bind_param("s", $email);
+    $stmt->bind_param(
+        "s",
+        $email
+    );
+
     $stmt->execute();
 
     $result = $stmt->get_result();
+
+
+    /* ==========================================
+       CHECK USER
+    ========================================== */
 
     if ($result->num_rows == 1) {
 
         $user = $result->fetch_assoc();
 
-        // Check password
+
+        /* ======================================
+           PASSWORD VERIFY
+        ====================================== */
+
         if (password_verify($password, $user["password"])) {
 
-            // Store user details in session
+
+            /* ==================================
+               CREATE SESSION
+            ================================== */
+
             $_SESSION["user_id"] = $user["id"];
+
             $_SESSION["user_name"] = $user["name"];
+
             $_SESSION["user_email"] = $user["email"];
+
             $_SESSION["role"] = $user["role"];
 
 
-            /*
-             * ==================================================
-             * ADMIN
-             * ==================================================
-             */
+            /* ==================================
+               CORE ADMIN
+            ================================== */
 
-            if ($user["role"] === "admin") {
+            if ($user["role"] === "core_admin") {
 
-                header("Location: admin/admin_dashboard.php");
+                header(
+                    "Location: core_admin/core_admin_dashboard.php"
+                );
+
                 exit();
+
             }
 
 
-            /*
-             * ==================================================
-             * EXISTING ORGANIZER
-             * ==================================================
-             */
+            /* ==================================
+               DEPARTMENT ADMIN / HOD
+            ================================== */
+
+            elseif ($user["role"] === "admin") {
+
+                header(
+                    "Location: admin/admin_dashboard.php"
+                );
+
+                exit();
+
+            }
+
+
+            /* ==================================
+               ORGANIZER
+            ================================== */
 
             elseif ($user["role"] === "organizer") {
 
-                header("Location: organizer/organizer_dashboard.php");
+                $_SESSION["is_organizer"] = true;
+
+                header(
+                    "Location: organizer/organizer_dashboard.php"
+                );
+
                 exit();
+
             }
 
 
-            /*
-             * ==================================================
-             * STUDENT
-             *
-             * A student can also become an approved organizer.
-             * We check organizer_team_members + organizer_requests.
-             * ==================================================
-             */
+            /* ==================================
+               STAGE MANAGER
+            ================================== */
+
+            elseif ($user["role"] === "stage_manager") {
+
+                $_SESSION["is_stage_manager"] = true;
+
+                header(
+                    "Location: stage_manager/dashboard.php"
+                );
+
+                exit();
+
+            }
+
+
+            /* ==================================
+               STUDENT
+               CHECK WHETHER STUDENT IS ALSO
+               AN APPROVED ORGANIZER
+            ================================== */
 
             elseif ($user["role"] === "student") {
 
                 $user_id = $user["id"];
+
 
                 $organizer_check = $conn->prepare(
                     "SELECT tm.team_member_id
@@ -84,61 +154,95 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                      LIMIT 1"
                 );
 
-                $organizer_check->bind_param("i", $user_id);
+                $organizer_check->bind_param(
+                    "i",
+                    $user_id
+                );
+
                 $organizer_check->execute();
 
-                $organizer_result = $organizer_check->get_result();
+                $organizer_result =
+                    $organizer_check->get_result();
 
-                /*
-                 * Approved organizer team member
-                 */
+
                 if ($organizer_result->num_rows > 0) {
 
                     $_SESSION["is_organizer"] = true;
 
-                    header("Location: organizer/organizer_dashboard.php");
+                    header(
+                        "Location: organizer/organizer_dashboard.php"
+                    );
+
                     exit();
 
-                }
-
-                /*
-                 * Normal student
-                 */
-                else {
+                } else {
 
                     $_SESSION["is_organizer"] = false;
 
-                    header("Location: student_dashboard.php");
+                    header(
+                        "Location: student_dashboard.php"
+                    );
+
                     exit();
+
                 }
 
                 $organizer_check->close();
+
             }
 
+
+            /* ==================================
+               INVALID ROLE
+            ================================== */
 
             else {
 
                 echo "Invalid user role.";
+
             }
 
-        } else {
-
-            echo "<script>
-                    alert('Incorrect password!');
-                    window.location.href='login.html';
-                  </script>";
         }
 
-    } else {
 
-        echo "<script>
-                alert('Email not found!');
-                window.location.href='login.html';
-              </script>";
+        /* ======================================
+           WRONG PASSWORD
+        ====================================== */
+
+        else {
+
+            echo "
+                <script>
+                    alert('Incorrect password!');
+                    window.location.href = 'login.html';
+                </script>
+            ";
+
+        }
+
     }
 
+
+    /* ==========================================
+       EMAIL NOT FOUND
+    ========================================== */
+
+    else {
+
+        echo "
+            <script>
+                alert('Email not found!');
+                window.location.href = 'login.html';
+            </script>
+        ";
+
+    }
+
+
     $stmt->close();
+
 }
+
 
 $conn->close();
 

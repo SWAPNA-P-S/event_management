@@ -4,93 +4,201 @@ include "db.php";
 
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
+    /* ==========================================
+       GET FORM DATA
+    ========================================== */
+
     $name = trim($_POST["name"]);
     $email = trim($_POST["email"]);
     $phone = trim($_POST["phone"]);
     $college = trim($_POST["college"]);
     $department = trim($_POST["department"]);
-    $student_id = trim($_POST["student_id"]);
+
+    // Form field is Registration Number
+    // It will be stored in the existing student_id column
+    $registration_number = trim($_POST["registration_number"]);
+
     $password = $_POST["password"];
     $confirm_password = $_POST["confirm_password"];
 
-    // Check whether passwords match
-    if ($password !== $confirm_password) {
-        die("Passwords do not match.");
+    // Get selected role
+    $role = isset($_POST["role"])
+        ? trim($_POST["role"])
+        : "";
+
+
+    /* ==========================================
+       ALLOWED REGISTRATION ROLES
+    ========================================== */
+
+    $allowed_roles = [
+        "student",
+        "organizer",
+        "stage_manager",
+        "admin",
+        "core_admin"
+    ];
+
+    if (!in_array($role, $allowed_roles, true)) {
+
+        die("Invalid registration role.");
+
     }
 
-    // Check whether email already exists
+
+    /* ==========================================
+       BASIC VALIDATION
+    ========================================== */
+
+    if (
+        empty($name) ||
+        empty($email) ||
+        empty($phone) ||
+        empty($college) ||
+        empty($department) ||
+        empty($registration_number) ||
+        empty($password) ||
+        empty($confirm_password)
+    ) {
+
+        die("Please fill in all required fields.");
+
+    }
+
+
+    /* ==========================================
+       PASSWORD CHECK
+    ========================================== */
+
+    if ($password !== $confirm_password) {
+
+        die("Passwords do not match.");
+
+    }
+
+
+    /* ==========================================
+       EMAIL CHECK
+    ========================================== */
+
     $check_email = $conn->prepare(
-        "SELECT id FROM users WHERE email = ?"
+        "SELECT id
+         FROM users
+         WHERE email = ?"
     );
 
-    $check_email->bind_param("s", $email);
+    $check_email->bind_param(
+        "s",
+        $email
+    );
+
     $check_email->execute();
+
     $check_email->store_result();
 
     if ($check_email->num_rows > 0) {
+
         die("Email already registered.");
+
     }
 
     $check_email->close();
 
 
-    // Check whether student ID already exists
-    $check_student = $conn->prepare(
-        "SELECT id FROM users WHERE student_id = ?"
+    /* ==========================================
+       REGISTRATION NUMBER CHECK
+       Stored in existing student_id column
+    ========================================== */
+
+    $check_registration = $conn->prepare(
+        "SELECT id
+         FROM users
+         WHERE student_id = ?"
     );
 
-    $check_student->bind_param("s", $student_id);
-    $check_student->execute();
-    $check_student->store_result();
+    $check_registration->bind_param(
+        "s",
+        $registration_number
+    );
 
-    if ($check_student->num_rows > 0) {
-        die("Student ID already registered.");
+    $check_registration->execute();
+
+    $check_registration->store_result();
+
+    if ($check_registration->num_rows > 0) {
+
+        die("Registration number already registered.");
+
     }
 
-    $check_student->close();
+    $check_registration->close();
 
 
-    // Hash password securely
+    /* ==========================================
+       PASSWORD HASH
+    ========================================== */
+
     $hashed_password = password_hash(
         $password,
         PASSWORD_DEFAULT
     );
 
 
-    // Insert student into database
+    /* ==========================================
+       INSERT USER
+    ========================================== */
+
     $stmt = $conn->prepare(
         "INSERT INTO users
-        (name, email, phone, college, department, student_id, password, role)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 'student')"
+        (
+            name,
+            email,
+            phone,
+            college,
+            department,
+            student_id,
+            password,
+            role
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
     );
 
     $stmt->bind_param(
-        "sssssss",
+        "ssssssss",
         $name,
         $email,
         $phone,
         $college,
         $department,
-        $student_id,
-        $hashed_password
+        $registration_number,
+        $hashed_password,
+        $role
     );
 
+
+    /* ==========================================
+       SUCCESS
+    ========================================== */
 
     if ($stmt->execute()) {
 
         ?>
 
         <!DOCTYPE html>
+
         <html lang="en">
 
         <head>
 
             <meta charset="UTF-8">
 
-            <meta name="viewport"
-                  content="width=device-width, initial-scale=1.0">
+            <meta
+                name="viewport"
+                content="width=device-width, initial-scale=1.0"
+            >
 
             <title>Registration Successful</title>
+
 
             <style>
 
@@ -98,101 +206,229 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     box-sizing: border-box;
                 }
 
+
                 body {
+
                     margin: 0;
+
                     font-family: Arial, sans-serif;
+
                     background: #f3efff;
+
                     display: flex;
+
                     justify-content: center;
+
                     align-items: center;
+
                     min-height: 100vh;
+
                 }
+
 
                 .success-card {
+
                     width: 90%;
+
                     max-width: 500px;
+
                     background: white;
+
                     padding: 40px;
+
                     border-radius: 18px;
+
                     text-align: center;
-                    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.10);
+
+                    box-shadow:
+                        0 8px 25px
+                        rgba(0, 0, 0, 0.10);
+
                 }
+
 
                 .success-icon {
+
                     width: 70px;
+
                     height: 70px;
+
                     margin: 0 auto 20px;
+
                     border-radius: 50%;
+
                     background: #e1f7e8;
+
                     color: #218838;
+
                     display: flex;
+
                     align-items: center;
+
                     justify-content: center;
+
                     font-size: 38px;
+
                 }
+
 
                 h1 {
+
                     color: #4f3295;
+
                     margin-bottom: 10px;
+
                 }
+
 
                 p {
+
                     color: #666;
+
                     line-height: 1.6;
+
                 }
 
-                .student-name {
+
+                .user-name {
+
                     font-weight: bold;
+
                     color: #4f3295;
+
                 }
+
+
+                .role-name {
+
+                    font-weight: bold;
+
+                    color: #4f3295;
+
+                }
+
 
                 .login-btn {
+
                     display: inline-block;
+
                     margin-top: 20px;
+
                     padding: 13px 28px;
+
                     background: #5b3ca8;
+
                     color: white;
+
                     text-decoration: none;
+
                     border-radius: 8px;
+
                     font-weight: bold;
+
                 }
 
+
                 .login-btn:hover {
+
                     background: #472d8b;
+
                 }
 
             </style>
 
         </head>
 
+
         <body>
 
+
             <div class="success-card">
+
 
                 <div class="success-icon">
                     ✓
                 </div>
 
-                <h1>Registration Successful!</h1>
+
+                <h1>
+                    Registration Successful!
+                </h1>
+
 
                 <p>
+
                     Welcome,
-                    <span class="student-name">
-                        <?php echo htmlspecialchars($name); ?>
+
+                    <span class="user-name">
+
+                        <?php
+
+                        echo htmlspecialchars($name);
+
+                        ?>
+
                     </span>
+
                     !
+
                 </p>
+
 
                 <p>
-                    Your student account has been created successfully.
-                    You can now login using your registered email and password.
+
+                    Your
+
+                    <span class="role-name">
+
+                        <?php
+
+                        if ($role === "stage_manager") {
+
+                            echo "Stage Manager";
+
+                        } elseif ($role === "organizer") {
+
+                            echo "Organizer";
+
+                        } elseif ($role === "admin") {
+
+                            echo "Department Admin / HOD";
+
+                        } elseif ($role === "core_admin") {
+
+                            echo "Core Admin";
+
+                        } else {
+
+                            echo "Student";
+
+                        }
+
+                        ?>
+
+                    </span>
+
+                    account has been created successfully.
+
+                    You can now login using your
+                    registered email and password.
+
                 </p>
 
-                <a href="login.html" class="login-btn">
+
+                <a
+                    href="login.html"
+                    class="login-btn"
+                >
+
                     Go to Login
+
                 </a>
 
+
             </div>
+
 
         </body>
 
@@ -206,8 +442,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     }
 
+
     $stmt->close();
+
 }
+
 
 $conn->close();
 

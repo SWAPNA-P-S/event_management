@@ -5,28 +5,45 @@ session_start();
 require_once "../db.php";
 
 
-// --------------------------------------------------
-// CHECK LOGIN
-// --------------------------------------------------
+// ==========================================================
+// HELPER
+// ==========================================================
+
+function h($value)
+{
+    return htmlspecialchars(
+        (string)$value,
+        ENT_QUOTES,
+        "UTF-8"
+    );
+}
+
+
+// ==========================================================
+// LOGIN CHECK
+// ==========================================================
 
 if (!isset($_SESSION["user_id"])) {
+
     header("Location: ../login.html");
     exit();
 }
 
 $user_id = (int)$_SESSION["user_id"];
+
 $user_role = $_SESSION["role"] ?? "";
 
 
-// --------------------------------------------------
-// CHECK ORGANIZER ACCESS
-// --------------------------------------------------
+// ==========================================================
+// ORGANIZER ACCESS CHECK
+// ==========================================================
 
 $is_organizer = false;
 
 
 // Existing organizer role
 if ($user_role === "organizer") {
+
     $is_organizer = true;
 }
 
@@ -34,384 +51,642 @@ if ($user_role === "organizer") {
 // Approved student-organizer
 if ($user_role === "student") {
 
-    $organizer_check = $conn->prepare("
+    $check = $conn->prepare("
         SELECT tm.team_member_id
         FROM organizer_team_members tm
+
         INNER JOIN organizer_requests r
             ON tm.request_id = r.request_id
+
         WHERE tm.user_id = ?
           AND r.status = 'approved'
+
         LIMIT 1
     ");
 
-    $organizer_check->bind_param("i", $user_id);
-    $organizer_check->execute();
+    $check->bind_param(
+        "i",
+        $user_id
+    );
 
-    $organizer_result = $organizer_check->get_result();
+    $check->execute();
 
-    if ($organizer_result->num_rows > 0) {
+    $result = $check->get_result();
+
+    if ($result->num_rows > 0) {
 
         $is_organizer = true;
+
         $_SESSION["is_organizer"] = true;
     }
 
-    $organizer_check->close();
+    $check->close();
 }
 
 
 if (!$is_organizer) {
+
     header("Location: ../login.html");
     exit();
 }
 
 
-// --------------------------------------------------
-// CHECK EVENT ID
-// --------------------------------------------------
+// ==========================================================
+// EVENT ID CHECK
+// ==========================================================
 
-if (!isset($_GET["event_id"]) || !is_numeric($_GET["event_id"])) {
+if (
+    !isset($_GET["event_id"])
+    ||
+    !is_numeric($_GET["event_id"])
+) {
+
     die("Invalid Event ID.");
 }
 
 $event_id = (int)$_GET["event_id"];
 
 
-// --------------------------------------------------
+// ==========================================================
 // FETCH EVENT
-// --------------------------------------------------
+// ==========================================================
+
+$event = null;
+
 
 if ($user_role === "organizer") {
 
-    $stmt = $conn->prepare("
-        SELECT event_id,
-               event_name,
-               event_date,
-               venue,
-               request_status
+    $event_stmt = $conn->prepare("
+        SELECT
+            event_id,
+            event_name,
+            event_date,
+            start_time,
+            end_time,
+            venue,
+            event_type,
+            status,
+            request_status,
+            organizer_id,
+            organizer_request_id
         FROM events
+
         WHERE event_id = ?
           AND organizer_id = ?
+
+        LIMIT 1
     ");
 
-    $stmt->bind_param("ii", $event_id, $user_id);
+    $event_stmt->bind_param(
+        "ii",
+        $event_id,
+        $user_id
+    );
 
 } else {
 
-    $stmt = $conn->prepare("
-        SELECT e.event_id,
-               e.event_name,
-               e.event_date,
-               e.venue,
-               e.request_status
+    $event_stmt = $conn->prepare("
+        SELECT DISTINCT
+            e.event_id,
+            e.event_name,
+            e.event_date,
+            e.start_time,
+            e.end_time,
+            e.venue,
+            e.event_type,
+            e.status,
+            e.request_status,
+            e.organizer_id,
+            e.organizer_request_id
+
         FROM events e
+
         INNER JOIN organizer_team_members tm
             ON e.organizer_request_id = tm.request_id
+
         INNER JOIN organizer_requests r
             ON tm.request_id = r.request_id
+
         WHERE e.event_id = ?
           AND tm.user_id = ?
           AND r.status = 'approved'
+
+        LIMIT 1
     ");
 
-    $stmt->bind_param("ii", $event_id, $user_id);
+    $event_stmt->bind_param(
+        "ii",
+        $event_id,
+        $user_id
+    );
 }
 
-$stmt->execute();
 
-$result = $stmt->get_result();
+$event_stmt->execute();
 
-if ($result->num_rows === 0) {
-    die("You do not have permission to manage this event.");
+$event_result =
+    $event_stmt->get_result();
+
+
+if ($event_result->num_rows === 0) {
+
+    die(
+        "You do not have permission to manage this event."
+    );
 }
 
-$event = $result->fetch_assoc();
 
-$stmt->close();
-
-
-// --------------------------------------------------
-// MESSAGE
-// --------------------------------------------------
-
-$message = "";
-$message_type = "";
+$event =
+    $event_result->fetch_assoc();
 
 
-// --------------------------------------------------
-// UPLOAD / RESUBMIT PROCESSING
-// --------------------------------------------------
+$event_stmt->close();
+
+
+// ==========================================================
+// FETCH EXISTING BROCHURE
+// ==========================================================
+
+$brochure = null;
+
+
+$brochure_stmt = $conn->prepare("
+    SELECT
+        brochure_id,
+        event_id,
+        brochure_file,
+        upload_date,
+        status,
+        correction_reason
+
+    FROM event_brochures
+
+    WHERE event_id = ?
+
+    ORDER BY brochure_id DESC
+
+    LIMIT 1
+");
+
+
+$brochure_stmt->bind_param(
+    "i",
+    $event_id
+);
+
+
+$brochure_stmt->execute();
+
+
+$brochure_result =
+    $brochure_stmt->get_result();
+
+
+if ($brochure_result->num_rows > 0) {
+
+    $brochure =
+        $brochure_result->fetch_assoc();
+}
+
+
+$brochure_stmt->close();
+
+
+// ==========================================================
+// MESSAGE VARIABLES
+// ==========================================================
+
+$error = "";
+
+$success = "";
+
+
+// ==========================================================
+// HANDLE BROCHURE UPLOAD
+// ==========================================================
 
 if ($_SERVER["REQUEST_METHOD"] === "POST") {
 
-    if (!isset($_FILES["brochure"])) {
 
-        $message = "Please select a brochure file.";
-        $message_type = "error";
+    // ------------------------------------------------------
+    // CHECK FILE
+    // ------------------------------------------------------
 
-    } else {
+    if (
+        !isset($_FILES["brochure"])
+        ||
+        $_FILES["brochure"]["error"]
+        === UPLOAD_ERR_NO_FILE
+    ) {
 
-        $file = $_FILES["brochure"];
+        $error =
+            "Please select a brochure file.";
+    }
 
-        if ($file["error"] !== UPLOAD_ERR_OK) {
 
-            $message = "File upload failed.";
-            $message_type = "error";
+    // ------------------------------------------------------
+    // FILE ERROR
+    // ------------------------------------------------------
+
+    if (
+        empty($error)
+        &&
+        $_FILES["brochure"]["error"]
+        !== UPLOAD_ERR_OK
+    ) {
+
+        $error =
+            "Brochure upload failed. Please try again.";
+    }
+
+
+    // ------------------------------------------------------
+    // FILE VALIDATION
+    // ------------------------------------------------------
+
+    $new_file_name = "";
+
+    $uploaded_file = null;
+
+
+    if (empty($error)) {
+
+        $uploaded_file =
+            $_FILES["brochure"];
+
+
+        $original_name =
+            $uploaded_file["name"];
+
+
+        $temporary_name =
+            $uploaded_file["tmp_name"];
+
+
+        $file_size =
+            (int)$uploaded_file["size"];
+
+
+        $extension =
+            strtolower(
+                pathinfo(
+                    $original_name,
+                    PATHINFO_EXTENSION
+                )
+            );
+
+
+        $allowed_extensions = [
+            "pdf",
+            "jpg",
+            "jpeg",
+            "png"
+        ];
+
+
+        if (
+            !in_array(
+                $extension,
+                $allowed_extensions,
+                true
+            )
+        ) {
+
+            $error =
+                "Only PDF, JPG, JPEG and PNG brochure files are allowed.";
+        }
+
+
+        if (
+            empty($error)
+            &&
+            $file_size > 10 * 1024 * 1024
+        ) {
+
+            $error =
+                "Brochure file size must not exceed 10 MB.";
+        }
+
+
+        if (empty($error)) {
+
+            $new_file_name =
+                "brochure_"
+                .
+                $event_id
+                .
+                "_"
+                .
+                time()
+                .
+                "."
+                .
+                $extension;
+        }
+    }
+
+
+    // ------------------------------------------------------
+    // SAVE FILE
+    // ------------------------------------------------------
+
+    if (
+        empty($error)
+        &&
+        $uploaded_file
+    ) {
+
+        $upload_directory =
+            "../uploads/";
+
+
+        if (
+            !is_dir(
+                $upload_directory
+            )
+        ) {
+
+            mkdir(
+                $upload_directory,
+                0777,
+                true
+            );
+        }
+
+
+        $upload_path =
+            $upload_directory
+            .
+            $new_file_name;
+
+
+        if (
+            !move_uploaded_file(
+                $uploaded_file["tmp_name"],
+                $upload_path
+            )
+        ) {
+
+            $error =
+                "Unable to save the brochure file.";
+        }
+    }
+
+
+    // ------------------------------------------------------
+    // DATABASE SAVE
+    // ------------------------------------------------------
+
+    if (
+        empty($error)
+        &&
+        !empty($new_file_name)
+    ) {
+
+        $old_file = "";
+
+
+        if ($brochure) {
+
+            $old_file =
+                $brochure["brochure_file"];
+        }
+
+
+        /*
+         * New submission status:
+         *
+         * correction_required
+         *      -> resubmitted
+         *
+         * anything else
+         *      -> pending
+         */
+
+        if (
+            $brochure
+            &&
+            $brochure["status"]
+            === "correction_required"
+        ) {
+
+            $new_status =
+                "resubmitted";
 
         } else {
 
-            $file_name = $file["name"];
-            $file_tmp = $file["tmp_name"];
-            $file_size = $file["size"];
-
-            $extension = strtolower(
-                pathinfo($file_name, PATHINFO_EXTENSION)
-            );
-
-            $allowed = ["pdf", "jpg", "jpeg", "png"];
+            $new_status =
+                "pending";
+        }
 
 
-            if (!in_array($extension, $allowed)) {
+        $conn->begin_transaction();
 
-                $message =
-                    "Only PDF, JPG, JPEG and PNG files are allowed.";
 
-                $message_type = "error";
+        try {
 
-            } elseif ($file_size > 10 * 1024 * 1024) {
 
-                $message =
-                    "File size must be below 10 MB.";
+            // ==================================================
+            // UPDATE EXISTING BROCHURE
+            // ==================================================
 
-                $message_type = "error";
+            if ($brochure) {
+
+                $update =
+                    $conn->prepare("
+                        UPDATE event_brochures
+
+                        SET
+                            brochure_file = ?,
+                            upload_date = CURRENT_TIMESTAMP,
+                            status = ?,
+                            correction_reason = NULL
+
+                        WHERE brochure_id = ?
+                    ");
+
+
+                $update->bind_param(
+                    "ssi",
+                    $new_file_name,
+                    $new_status,
+                    $brochure["brochure_id"]
+                );
+
+
+                if (
+                    !$update->execute()
+                ) {
+
+                    throw new Exception(
+                        "Failed to update brochure."
+                    );
+                }
+
+
+                $update->close();
+
 
             } else {
 
-                $new_file_name =
-                    "brochure_" .
-                    $event_id .
-                    "_" .
-                    time() .
-                    "." .
-                    $extension;
 
-                $upload_path =
-                    "../uploads/" .
-                    $new_file_name;
+                // ==================================================
+                // INSERT NEW BROCHURE
+                // ==================================================
 
+                $insert =
+                    $conn->prepare("
+                        INSERT INTO event_brochures
+                        (
+                            event_id,
+                            brochure_file,
+                            upload_date,
+                            status,
+                            correction_reason
+                        )
 
-                if (move_uploaded_file($file_tmp, $upload_path)) {
-
-
-                    // --------------------------------------------------
-                    // CHECK EXISTING BROCHURE
-                    // --------------------------------------------------
-
-                    $check = $conn->prepare("
-                        SELECT brochure_id, status, brochure_file
-                        FROM event_brochures
-                        WHERE event_id = ?
-                        LIMIT 1
+                        VALUES
+                        (
+                            ?,
+                            ?,
+                            CURRENT_TIMESTAMP,
+                            'pending',
+                            NULL
+                        )
                     ");
 
-                    $check->bind_param("i", $event_id);
-                    $check->execute();
 
-                    $check_result = $check->get_result();
-
-
-                    if ($check_result->num_rows > 0) {
-
-                        $existing_brochure =
-                            $check_result->fetch_assoc();
-
-                        $old_file =
-                            $existing_brochure["brochure_file"];
-
-                        $old_status =
-                            $existing_brochure["status"];
+                $insert->bind_param(
+                    "is",
+                    $event_id,
+                    $new_file_name
+                );
 
 
-                        // --------------------------------------------------
-                        // UPDATE SAME BROCHURE RECORD
-                        // --------------------------------------------------
+                if (
+                    !$insert->execute()
+                ) {
 
-                        if ($old_status === "correction_required") {
-
-                            $new_status = "resubmitted";
-
-                        } else {
-
-                            $new_status = "pending";
-                        }
+                    throw new Exception(
+                        "Failed to save brochure."
+                    );
+                }
 
 
-                        $update = $conn->prepare("
-                            UPDATE event_brochures
-                            SET brochure_file = ?,
-                                upload_date = CURRENT_TIMESTAMP,
-                                status = ?,
-                                correction_reason = NULL
-                            WHERE brochure_id = ?
-                        ");
-
-                        $update->bind_param(
-                            "ssi",
-                            $new_file_name,
-                            $new_status,
-                            $existing_brochure["brochure_id"]
-                        );
+                $insert->close();
+            }
 
 
-                        if ($update->execute()) {
+            $conn->commit();
 
 
-                            // --------------------------------------------------
-                            // DELETE OLD FILE
-                            // --------------------------------------------------
+            // ==================================================
+            // DELETE OLD FILE
+            // ==================================================
 
-                            if (
-                                !empty($old_file) &&
-                                $old_file !== $new_file_name
-                            ) {
+            if (
+                !empty($old_file)
+                &&
+                $old_file !== $new_file_name
+            ) {
 
-                                $old_file_path =
-                                    "../uploads/" . $old_file;
-
-                                if (file_exists($old_file_path)) {
-                                    unlink($old_file_path);
-                                }
-                            }
+                $old_path =
+                    "../uploads/"
+                    .
+                    $old_file;
 
 
-                            if ($new_status === "resubmitted") {
+                if (
+                    file_exists($old_path)
+                ) {
 
-                                $message =
-                                    "Brochure resubmitted successfully and sent for Admin review.";
-
-                            } else {
-
-                                $message =
-                                    "Brochure uploaded successfully and sent for Admin review.";
-                            }
-
-                            $message_type = "success";
-
-                        } else {
-
-                            $message =
-                                "Failed to update brochure.";
-
-                            $message_type = "error";
-
-                            // Remove newly uploaded file
-                            if (file_exists($upload_path)) {
-                                unlink($upload_path);
-                            }
-                        }
-
-                        $update->close();
-
-
-                    } else {
-
-
-                        // --------------------------------------------------
-                        // FIRST BROCHURE UPLOAD
-                        // --------------------------------------------------
-
-                        $insert = $conn->prepare("
-                            INSERT INTO event_brochures
-                            (
-                                event_id,
-                                brochure_file,
-                                status
-                            )
-                            VALUES
-                            (
-                                ?,
-                                ?,
-                                'pending'
-                            )
-                        ");
-
-                        $insert->bind_param(
-                            "is",
-                            $event_id,
-                            $new_file_name
-                        );
-
-
-                        if ($insert->execute()) {
-
-                            $message =
-                                "Brochure uploaded successfully and sent for Admin review.";
-
-                            $message_type = "success";
-
-                        } else {
-
-                            $message =
-                                "Failed to save brochure.";
-
-                            $message_type = "error";
-
-                            // Remove newly uploaded file
-                            if (file_exists($upload_path)) {
-                                unlink($upload_path);
-                            }
-                        }
-
-                        $insert->close();
-                    }
-
-
-                    $check->close();
-
-
-                } else {
-
-                    $message =
-                        "Unable to save the uploaded file.";
-
-                    $message_type = "error";
+                    unlink($old_path);
                 }
             }
+
+
+            // ==================================================
+            // SUCCESS
+            // ==================================================
+
+            $success =
+                "Brochure uploaded successfully and sent for review.";
+
+
+            // Refresh brochure information
+            $brochure_stmt =
+                $conn->prepare("
+                    SELECT
+                        brochure_id,
+                        event_id,
+                        brochure_file,
+                        upload_date,
+                        status,
+                        correction_reason
+
+                    FROM event_brochures
+
+                    WHERE event_id = ?
+
+                    ORDER BY brochure_id DESC
+
+                    LIMIT 1
+                ");
+
+
+            $brochure_stmt->bind_param(
+                "i",
+                $event_id
+            );
+
+
+            $brochure_stmt->execute();
+
+
+            $brochure_result =
+                $brochure_stmt->get_result();
+
+
+            if (
+                $brochure_result->num_rows > 0
+            ) {
+
+                $brochure =
+                    $brochure_result->fetch_assoc();
+            }
+
+
+            $brochure_stmt->close();
+
+
+        } catch (Exception $e) {
+
+
+            $conn->rollback();
+
+
+            // Remove uploaded file
+            if (
+                file_exists($upload_path)
+            ) {
+
+                unlink($upload_path);
+            }
+
+
+            $error =
+                "Unable to submit brochure. "
+                .
+                $e->getMessage();
         }
     }
 }
 
-
-// --------------------------------------------------
-// GET CURRENT BROCHURE
-// --------------------------------------------------
-
-$brochure = null;
-
-$stmt2 = $conn->prepare("
-    SELECT brochure_id,
-           brochure_file,
-           upload_date,
-           status,
-           correction_reason
-    FROM event_brochures
-    WHERE event_id = ?
-    LIMIT 1
-");
-
-$stmt2->bind_param("i", $event_id);
-$stmt2->execute();
-
-$result2 = $stmt2->get_result();
-
-if ($result2->num_rows > 0) {
-    $brochure = $result2->fetch_assoc();
-}
-
-$stmt2->close();
-
 ?>
 
+
 <!DOCTYPE html>
+
 <html lang="en">
 
 <head>
@@ -420,256 +695,594 @@ $stmt2->close();
 
 <meta
     name="viewport"
-    content="width=device-width, initial-scale=1.0">
+    content="width=device-width, initial-scale=1.0"
+>
 
-<title>Upload Brochure | Organizer</title>
+<title>
+    Brochure Upload | Organizer
+</title>
 
 
 <style>
 
 * {
-    margin: 0;
-    padding: 0;
     box-sizing: border-box;
-    font-family: Arial, sans-serif;
 }
+
 
 body {
-    background: #eef2f7;
+
+    margin: 0;
+
+    font-family: Arial, sans-serif;
+
+    background: #F4F7FB;
+
     color: #172033;
 }
 
-.header {
-    background: #0b1f3a;
-    color: white;
-    padding: 20px 35px;
-
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.header h1 {
-    font-size: 24px;
-}
-
-.back-btn {
-    text-decoration: none;
-    color: white;
-    background: #1769e0;
-    padding: 10px 18px;
-    border-radius: 7px;
-}
 
 .container {
-    max-width: 850px;
-    margin: 35px auto;
-    padding: 0 20px;
+
+    width: 92%;
+
+    max-width: 1000px;
+
+    margin: 35px auto 60px;
 }
 
-.event-card,
-.upload-card,
-.status-card {
-    background: white;
-    padding: 25px;
-    border-radius: 12px;
 
-    box-shadow:
-        0 4px 15px rgba(0,0,0,0.08);
+.back {
 
-    margin-bottom: 20px;
-}
-
-.event-card h2 {
-    color: #0b1f3a;
-    margin-bottom: 10px;
-}
-
-.event-info {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 12px;
-    margin-top: 18px;
-}
-
-.info {
-    background: #f2f5fa;
-    padding: 12px 16px;
-    border-radius: 8px;
-}
-
-.info strong {
-    color: #0b1f3a;
-}
-
-.upload-card h2,
-.status-card h2 {
-    color: #0b1f3a;
-    margin-bottom: 18px;
-}
-
-.note {
-    background: #eef5ff;
-    border-left: 4px solid #1769e0;
-
-    padding: 14px;
-    margin-bottom: 20px;
-
-    color: #43536b;
-    line-height: 1.5;
-}
-
-input[type="file"] {
-    width: 100%;
-
-    padding: 15px;
-
-    border:
-        2px dashed #b9c5d6;
-
-    border-radius: 8px;
-
-    background: #f8fafc;
-
-    cursor: pointer;
-}
-
-.upload-btn {
-    margin-top: 18px;
-
-    background: #1769e0;
-    color: white;
-
-    border: none;
-
-    padding: 13px 25px;
-
-    border-radius: 7px;
-
-    cursor: pointer;
-
-    font-size: 15px;
-}
-
-.upload-btn:hover {
-    background: #0d55bd;
-}
-
-.resubmit-btn {
-    background: #d97706;
-}
-
-.resubmit-btn:hover {
-    background: #b65f04;
-}
-
-.message {
-    padding: 14px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-}
-
-.success {
-    background: #dff5e5;
-    color: #1d7a35;
-}
-
-.error {
-    background: #ffe1e1;
-    color: #b42323;
-}
-
-.status {
     display: inline-block;
 
-    padding: 7px 14px;
+    margin-bottom: 20px;
 
-    border-radius: 20px;
-
-    font-size: 13px;
-
-    font-weight: bold;
-}
-
-.status.pending {
-    background: #fff2cc;
-    color: #956f00;
-}
-
-.status.approved {
-    background: #dff5e5;
-    color: #218838;
-}
-
-.status.correction {
-    background: #ffe4cc;
-    color: #b35a00;
-}
-
-.status.resubmitted {
-    background: #e3edff;
-    color: #1769e0;
-}
-
-.view-btn {
-    display: inline-block;
-
-    margin-top: 15px;
+    color: #1E4E8C;
 
     text-decoration: none;
 
-    background: #e8edf5;
+    font-weight: 600;
 
-    color: #172033;
-
-    padding: 10px 16px;
-
-    border-radius: 7px;
+    font-size: 14px;
 }
 
-.correction {
-    margin-top: 15px;
 
-    background: #fff5eb;
+.back:hover {
 
-    padding: 15px;
+    text-decoration: underline;
+}
 
-    border-radius: 8px;
 
-    color: #8a4b08;
+.page-header {
+
+    background: #0B1F3A;
+
+    color: white;
+
+    border-radius: 14px;
+
+    padding: 25px;
+
+    margin-bottom: 25px;
+}
+
+
+.page-header h1 {
+
+    margin: 0 0 8px;
+
+    font-size: 27px;
+}
+
+
+.page-header p {
+
+    margin: 0;
+
+    color: #D7E3F2;
 
     line-height: 1.6;
 }
 
-.correction-title {
-    font-weight: bold;
-    margin-bottom: 8px;
-}
 
-.correction-line {
+/* ==========================================================
+   EVENT CARD
+========================================================== */
+
+.event-card {
+
     background: white;
 
-    padding: 9px 11px;
+    border: 1px solid #DCE4EF;
 
-    margin-top: 7px;
+    border-radius: 14px;
 
-    border-radius: 6px;
+    padding: 22px;
 
-    border-left: 4px solid #d97706;
+    margin-bottom: 22px;
+
+    box-shadow:
+        0 4px 14px rgba(11, 31, 58, 0.05);
 }
 
-@media(max-width:600px) {
 
-    .header {
+.event-card h2 {
+
+    margin: 0 0 18px;
+
+    color: #0B1F3A;
+
+    font-size: 21px;
+}
+
+
+.event-grid {
+
+    display: grid;
+
+    grid-template-columns:
+        repeat(2, 1fr);
+
+    gap: 14px;
+}
+
+
+.event-item {
+
+    background: #F4F7FB;
+
+    border-radius: 9px;
+
+    padding: 13px;
+}
+
+
+.event-label {
+
+    color: #718096;
+
+    font-size: 12px;
+
+    margin-bottom: 5px;
+}
+
+
+.event-value {
+
+    color: #172033;
+
+    font-size: 14px;
+
+    font-weight: 600;
+}
+
+
+/* ==========================================================
+   MAIN CARD
+========================================================== */
+
+.main-card {
+
+    background: white;
+
+    border: 1px solid #DCE4EF;
+
+    border-radius: 14px;
+
+    padding: 25px;
+
+    box-shadow:
+        0 4px 14px rgba(11, 31, 58, 0.05);
+}
+
+
+.main-card h2 {
+
+    margin-top: 0;
+
+    color: #0B1F3A;
+}
+
+
+/* ==========================================================
+   INFORMATION
+========================================================== */
+
+.info-box {
+
+    background: #EAF2FB;
+
+    border: 1px solid #C9DDF2;
+
+    border-radius: 10px;
+
+    padding: 16px;
+
+    margin: 18px 0;
+
+    color: #25405F;
+
+    line-height: 1.6;
+
+    font-size: 14px;
+}
+
+
+/* ==========================================================
+   OFFICIAL CHECKLIST
+========================================================== */
+
+.checklist-card {
+
+    background: #F8FAFD;
+
+    border: 1px solid #DCE4EF;
+
+    border-radius: 11px;
+
+    padding: 18px;
+
+    margin: 20px 0;
+}
+
+
+.checklist-card h3 {
+
+    margin-top: 0;
+
+    color: #0B1F3A;
+
+    font-size: 16px;
+}
+
+
+.checklist-card ul {
+
+    margin: 0;
+
+    padding-left: 22px;
+}
+
+
+.checklist-card li {
+
+    margin-bottom: 9px;
+
+    color: #4A5568;
+
+    line-height: 1.5;
+
+    font-size: 13px;
+}
+
+
+/* ==========================================================
+   CURRENT BROCHURE
+========================================================== */
+
+.current-brochure {
+
+    border: 1px solid #DCE4EF;
+
+    background: #F8FAFD;
+
+    border-radius: 10px;
+
+    padding: 16px;
+
+    margin: 20px 0;
+}
+
+
+.current-brochure h3 {
+
+    margin-top: 0;
+
+    color: #0B1F3A;
+
+    font-size: 16px;
+}
+
+
+.current-file {
+
+    background: white;
+
+    border: 1px solid #DCE4EF;
+
+    border-radius: 8px;
+
+    padding: 12px;
+
+    font-size: 13px;
+
+    color: #4A5568;
+
+    word-break: break-word;
+}
+
+
+.status {
+
+    display: inline-block;
+
+    margin-top: 10px;
+
+    padding: 6px 11px;
+
+    border-radius: 20px;
+
+    font-size: 12px;
+
+    font-weight: bold;
+}
+
+
+.status-pending {
+
+    background: #FEF3C7;
+
+    color: #92400E;
+}
+
+
+.status-approved {
+
+    background: #DCFCE7;
+
+    color: #166534;
+}
+
+
+.status-correction {
+
+    background: #FEE2E2;
+
+    color: #991B1B;
+}
+
+
+.status-resubmitted {
+
+    background: #DBEAFE;
+
+    color: #1E40AF;
+}
+
+
+/* ==========================================================
+   FORM
+========================================================== */
+
+.form-group {
+
+    margin-top: 22px;
+}
+
+
+.form-group label {
+
+    display: block;
+
+    margin-bottom: 8px;
+
+    color: #172033;
+
+    font-size: 14px;
+
+    font-weight: bold;
+}
+
+
+.file-input {
+
+    width: 100%;
+
+    padding: 14px;
+
+    background: #F8FAFD;
+
+    border: 2px dashed #B9C8DA;
+
+    border-radius: 10px;
+
+    cursor: pointer;
+}
+
+
+.file-input:hover {
+
+    border-color: #1E4E8C;
+
+    background: #F4F8FD;
+}
+
+
+.file-note {
+
+    margin-top: 8px;
+
+    color: #718096;
+
+    font-size: 12px;
+
+    line-height: 1.5;
+}
+
+
+/* ==========================================================
+   ALERTS
+========================================================== */
+
+.alert {
+
+    border-radius: 10px;
+
+    padding: 14px 16px;
+
+    margin-bottom: 20px;
+
+    line-height: 1.5;
+
+    font-size: 14px;
+}
+
+
+.alert-success {
+
+    background: #DCFCE7;
+
+    border: 1px solid #86EFAC;
+
+    color: #166534;
+}
+
+
+.alert-error {
+
+    background: #FEE2E2;
+
+    border: 1px solid #FCA5A5;
+
+    color: #991B1B;
+}
+
+
+/* ==========================================================
+   CORRECTION
+========================================================== */
+
+.correction-box {
+
+    background: #FFF7ED;
+
+    border: 1px solid #FDBA74;
+
+    border-radius: 10px;
+
+    padding: 16px;
+
+    margin: 20px 0;
+}
+
+
+.correction-box h3 {
+
+    margin-top: 0;
+
+    color: #9A3412;
+
+    font-size: 16px;
+}
+
+
+.correction-box p {
+
+    margin-bottom: 0;
+
+    color: #7C2D12;
+
+    line-height: 1.6;
+
+    font-size: 14px;
+}
+
+
+/* ==========================================================
+   BUTTONS
+========================================================== */
+
+.buttons {
+
+    margin-top: 25px;
+
+    display: flex;
+
+    gap: 10px;
+
+    flex-wrap: wrap;
+}
+
+
+.btn {
+
+    display: inline-block;
+
+    border: none;
+
+    border-radius: 8px;
+
+    padding: 12px 20px;
+
+    font-size: 14px;
+
+    font-weight: bold;
+
+    text-decoration: none;
+
+    cursor: pointer;
+}
+
+
+.upload-btn {
+
+    background: #1E4E8C;
+
+    color: white;
+}
+
+
+.upload-btn:hover {
+
+    background: #173D70;
+}
+
+
+.cancel-btn {
+
+    background: #E2E8F0;
+
+    color: #172033;
+}
+
+
+.cancel-btn:hover {
+
+    background: #CBD5E1;
+}
+
+
+/* ==========================================================
+   RESPONSIVE
+========================================================== */
+
+@media(max-width: 700px) {
+
+    .container {
+
+        width: 95%;
+
+        margin-top: 20px;
+    }
+
+
+    .event-grid {
+
+        grid-template-columns: 1fr;
+    }
+
+
+    .page-header h1 {
+
+        font-size: 23px;
+    }
+
+
+    .main-card,
+    .event-card {
+
         padding: 18px;
-    }
-
-    .header h1 {
-        font-size: 19px;
-    }
-
-    .event-info {
-        flex-direction: column;
     }
 
 }
@@ -682,369 +1295,686 @@ input[type="file"] {
 <body>
 
 
-<div class="header">
+<div class="container">
+
+
+<!-- ========================================================
+     BACK
+======================================================== -->
+
+<a
+    href="planning.php?event_id=<?php echo $event_id; ?>"
+    class="back"
+>
+    ← Back to Event Planning
+</a>
+
+
+<!-- ========================================================
+     HEADER
+======================================================== -->
+
+<div class="page-header">
 
     <h1>
-        Organizer | Brochure Upload
+        📄 Event Brochure
     </h1>
 
-
-    <!-- BACK TO ORGANIZER DASHBOARD -->
-
-    <a
-        href="organizer_dashboard.php"
-        class="back-btn">
-
-        ← Back
-
-    </a>
+    <p>
+        Upload the official brochure/publicity material
+        for your event. The brochure will be submitted
+        for administrative scrutiny before publication.
+    </p>
 
 </div>
 
 
-<div class="container">
+<!-- ========================================================
+     SUCCESS
+======================================================== -->
+
+<?php if ($success !== ""): ?>
+
+    <div class="alert alert-success">
+
+        ✓
+
+        <?php
+        echo h($success);
+        ?>
+
+    </div>
+
+<?php endif; ?>
 
 
-    <!-- EVENT -->
+<!-- ========================================================
+     ERROR
+======================================================== -->
 
-    <div class="event-card">
+<?php if ($error !== ""): ?>
 
-        <h2>
+    <div class="alert alert-error">
 
-            <?php
-            echo htmlspecialchars(
-                $event["event_name"]
-            );
-            ?>
+        ⚠️
 
-        </h2>
+        <?php
+        echo h($error);
+        ?>
 
+    </div>
 
-        <p>
-            Upload the brochure prepared by the organizing committee.
-        </p>
-
-
-        <div class="event-info">
+<?php endif; ?>
 
 
-            <div class="info">
+<!-- ========================================================
+     EVENT DETAILS
+======================================================== -->
 
-                <strong>Date:</strong>
+<div class="event-card">
+
+    <h2>
+        <?php
+        echo h(
+            $event["event_name"]
+        );
+        ?>
+    </h2>
+
+
+    <div class="event-grid">
+
+
+        <div class="event-item">
+
+            <div class="event-label">
+                Event Date
+            </div>
+
+            <div class="event-value">
 
                 <?php
-                echo htmlspecialchars(
-                    $event["event_date"]
+
+                echo h(
+                    date(
+                        "d M Y",
+                        strtotime(
+                            $event["event_date"]
+                        )
+                    )
                 );
+
                 ?>
 
             </div>
-
-
-            <div class="info">
-
-                <strong>Venue:</strong>
-
-                <?php
-                echo htmlspecialchars(
-                    $event["venue"]
-                );
-                ?>
-
-            </div>
-
 
         </div>
+
+
+        <div class="event-item">
+
+            <div class="event-label">
+                Time
+            </div>
+
+            <div class="event-value">
+
+                <?php
+
+                echo h(
+                    date(
+                        "h:i A",
+                        strtotime(
+                            $event["start_time"]
+                        )
+                    )
+                );
+
+                ?>
+
+                -
+
+                <?php
+
+                echo h(
+                    date(
+                        "h:i A",
+                        strtotime(
+                            $event["end_time"]
+                        )
+                    )
+                );
+
+                ?>
+
+            </div>
+
+        </div>
+
+
+        <div class="event-item">
+
+            <div class="event-label">
+                Venue
+            </div>
+
+            <div class="event-value">
+
+                <?php
+
+                echo h(
+                    $event["venue"]
+                    ?: "Not specified"
+                );
+
+                ?>
+
+            </div>
+
+        </div>
+
+
+        <div class="event-item">
+
+            <div class="event-label">
+                Event Type
+            </div>
+
+            <div class="event-value">
+
+                <?php
+
+                echo h(
+                    $event["event_type"]
+                    ?: "Not specified"
+                );
+
+                ?>
+
+            </div>
+
+        </div>
+
+
+    </div>
+
+</div>
+
+
+<!-- ========================================================
+     MAIN BROCHURE CARD
+======================================================== -->
+
+<div class="main-card">
+
+
+    <h2>
+        Upload Brochure
+    </h2>
+
+
+    <div class="info-box">
+
+        The brochure should contain the required institutional
+        details, programme information, organizing details and
+        contact information prescribed by the college.
+
+        <br><br>
+
+        After submission, the brochure will remain under
+        <strong>administrative review</strong> until it is
+        approved for official publication.
 
     </div>
 
 
-    <!-- MESSAGE -->
+    <!-- ====================================================
+         CORRECTION MESSAGE
+    ==================================================== -->
 
-    <?php if ($message !== ""): ?>
+    <?php if (
+        $brochure
+        &&
+        $brochure["status"]
+        === "correction_required"
+    ): ?>
 
-        <div
-            class="message
-            <?php echo $message_type; ?>">
 
-            <?php
-            echo htmlspecialchars($message);
-            ?>
+        <div class="correction-box">
+
+            <h3>
+                ⚠️ Correction Required
+            </h3>
+
+
+            <p>
+
+                <?php
+
+                echo h(
+                    $brochure["correction_reason"]
+                    ?:
+                    "Please upload a corrected brochure."
+                );
+
+                ?>
+
+                <br><br>
+
+                Upload the corrected brochure below.
+                After resubmission, it will be sent for
+                review again.
+
+            </p>
 
         </div>
+
 
     <?php endif; ?>
 
 
-    <!-- =================================================
-         CORRECTION DETAILS
-    ================================================== -->
+    <!-- ====================================================
+         CURRENT BROCHURE
+    ==================================================== -->
 
-    <?php if (
-        $brochure &&
-        $brochure["status"] === "correction_required"
-    ): ?>
-
-        <div class="status-card">
-
-            <h2>
-                ⚠ Correction Required
-            </h2>
+    <?php if ($brochure): ?>
 
 
-            <p
-                style="
-                    color:#697386;
-                    margin-bottom:15px;
-                    line-height:1.5;
-                "
-            >
-                Admin has reviewed your brochure and marked
-                one or more items for correction. Please make
-                the required changes and resubmit the brochure.
-            </p>
+        <div class="current-brochure">
+
+            <h3>
+                Current Brochure
+            </h3>
 
 
-            <?php if (
-                !empty($brochure["correction_reason"])
-            ): ?>
+            <div class="current-file">
 
-                <div class="correction">
+                📄
 
-                    <div class="correction-title">
-                        Admin Correction Details:
-                    </div>
+                <?php
 
+                echo h(
+                    $brochure["brochure_file"]
+                );
+
+                ?>
+
+
+                <br>
+
+
+                <span
+                    class="status
+                    <?php
+
+                    if (
+                        $brochure["status"]
+                        === "approved"
+                    ) {
+
+                        echo "status-approved";
+
+                    } elseif (
+                        $brochure["status"]
+                        === "correction_required"
+                    ) {
+
+                        echo "status-correction";
+
+                    } elseif (
+                        $brochure["status"]
+                        === "resubmitted"
+                    ) {
+
+                        echo "status-resubmitted";
+
+                    } else {
+
+                        echo "status-pending";
+                    }
+
+                    ?>"
+                >
 
                     <?php
 
-                    $correction_lines =
-                        explode(
-                            "\n",
-                            $brochure["correction_reason"]
-                        );
-
-                    foreach ($correction_lines as $line):
-
-                        $line = trim($line);
-
-                        if ($line === "") {
-                            continue;
-                        }
+                    echo h(
+                        ucfirst(
+                            str_replace(
+                                "_",
+                                " ",
+                                $brochure["status"]
+                            )
+                        )
+                    );
 
                     ?>
 
-                        <div class="correction-line">
+                </span>
 
-                            ❌
-                            <?php
-                            echo htmlspecialchars($line);
-                            ?>
 
-                        </div>
+                <br><br>
 
-                    <?php endforeach; ?>
 
-                </div>
+                Uploaded on:
 
-            <?php endif; ?>
+                <?php
+
+                echo h(
+                    date(
+                        "d M Y, h:i A",
+                        strtotime(
+                            $brochure["upload_date"]
+                        )
+                    )
+                );
+
+                ?>
+
+            </div>
 
         </div>
+
 
     <?php endif; ?>
 
 
-    <!-- =================================================
-         UPLOAD / RESUBMIT
-    ================================================== -->
+    <!-- ====================================================
+         OFFICIAL BROCHURE CHECKLIST
+    ==================================================== -->
 
-    <div class="upload-card">
-
-        <h2>
-
-            <?php
-            if (
-                $brochure &&
-                $brochure["status"] === "correction_required"
-            ) {
-                echo "Resubmit Brochure";
-            } else {
-                echo "Upload Brochure";
-            }
-            ?>
-
-        </h2>
+    <div class="checklist-card">
 
 
-        <?php if (
-            $brochure &&
-            $brochure["status"] === "correction_required"
-        ): ?>
-
-            <div
-                class="note"
-                style="
-                    border-left-color:#d97706;
-                    background:#fff8ef;
-                "
-            >
-
-                Make the required corrections in your brochure
-                and upload the corrected file here.
-
-                <br><br>
-
-                <strong>
-                    The same brochure record will be updated
-                    and sent back to Admin for review.
-                </strong>
-
-            </div>
-
-        <?php else: ?>
-
-            <div class="note">
-
-                The organizer should prepare the brochure separately
-                and upload the final file here.
-
-                <br><br>
-
-                The uploaded brochure will be reviewed by the Admin
-                before it becomes publicly visible.
-
-            </div>
-
-        <?php endif; ?>
+        <h3>
+            Official Brochure Checklist
+        </h3>
 
 
-        <form
-            method="POST"
-            enctype="multipart/form-data">
+        <ul>
+
+            <li>
+                Official college emblem/seal and required
+                institutional emblems should be placed correctly.
+            </li>
+
+            <li>
+                The mandatory institutional text should be included.
+            </li>
+
+            <li>
+                Programme title and nature of programme should
+                be clearly mentioned.
+            </li>
+
+            <li>
+                Target audience should be mentioned where applicable.
+            </li>
+
+            <li>
+                Date, day, time and venue should be clearly shown.
+            </li>
+
+            <li>
+                Organizing department, cell or club details should
+                be included.
+            </li>
+
+            <li>
+                Principal, Convenor, Staff Coordinator and Student
+                Coordinator/contact details should be provided
+                where applicable.
+            </li>
+
+            <li>
+                Official college contact information should be included.
+            </li>
+
+            <li>
+                External supporting/funding body details should be
+                included where applicable.
+            </li>
+
+        </ul>
+
+
+    </div>
+
+
+    <!-- ====================================================
+         UPLOAD FORM
+    ==================================================== -->
+
+    <form
+        method="POST"
+        enctype="multipart/form-data"
+        id="brochureForm"
+    >
+
+
+        <div class="form-group">
+
+
+            <label for="brochure">
+
+                <?php
+
+                if (
+                    $brochure
+                    &&
+                    $brochure["status"]
+                    === "correction_required"
+                ) {
+
+                    echo "Upload Corrected Brochure *";
+
+                } elseif ($brochure) {
+
+                    echo "Upload New Brochure *";
+
+                } else {
+
+                    echo "Upload Brochure *";
+                }
+
+                ?>
+
+            </label>
 
 
             <input
                 type="file"
                 name="brochure"
+                id="brochure"
+                class="file-input"
                 accept=".pdf,.jpg,.jpeg,.png"
-                required>
+                required
+            >
 
 
-            <?php if (
-                $brochure &&
-                $brochure["status"] === "correction_required"
-            ): ?>
+            <div class="file-note">
 
-                <button
-                    type="submit"
-                    class="upload-btn resubmit-btn">
+                Allowed formats:
+                PDF, JPG, JPEG, PNG
 
-                    🔄 Resubmit Brochure
+                <br>
 
-                </button>
+                Maximum file size:
+                10 MB
 
-            <?php else: ?>
-
-                <button
-                    type="submit"
-                    class="upload-btn">
-
-                    📤 Upload Brochure
-
-                </button>
-
-            <?php endif; ?>
+            </div>
 
 
-        </form>
-
-    </div>
+        </div>
 
 
-    <!-- =================================================
-         CURRENT STATUS
-    ================================================== -->
+        <!-- ==================================================
+             BUTTONS
+        ================================================== -->
 
-    <?php if ($brochure): ?>
-
-    <div class="status-card">
-
-        <h2>
-            Brochure Status
-        </h2>
+        <div class="buttons">
 
 
-        <?php if (
-            $brochure["status"] === "pending"
-        ): ?>
+            <button
+                type="submit"
+                class="btn upload-btn"
+                id="uploadButton"
+            >
 
-            <span class="status pending">
+                📄
 
-                Pending Admin Review
+                <?php
 
-            </span>
+                if (
+                    $brochure
+                    &&
+                    $brochure["status"]
+                    === "correction_required"
+                ) {
 
+                    echo "Resubmit Brochure";
 
-        <?php elseif (
-            $brochure["status"] === "resubmitted"
-        ): ?>
+                } else {
 
-            <span class="status resubmitted">
+                    echo "Submit Brochure";
+                }
 
-                🔄 Resubmitted — Pending Admin Review
+                ?>
 
-            </span>
-
-
-        <?php elseif (
-            $brochure["status"] === "approved"
-        ): ?>
-
-            <span class="status approved">
-
-                ✓ Approved
-
-            </span>
+            </button>
 
 
-        <?php elseif (
-            $brochure["status"] === "correction_required"
-        ): ?>
+            <a
+                href="planning.php?event_id=<?php echo $event_id; ?>"
+                class="btn cancel-btn"
+            >
 
-            <span class="status correction">
+                Cancel
 
-                ⚠ Correction Required
-
-            </span>
-
-        <?php endif; ?>
+            </a>
 
 
-        <br>
+        </div>
 
 
-        <a
-            href="../uploads/<?php
-                echo htmlspecialchars(
-                    $brochure["brochure_file"]
-                );
-            ?>"
-            target="_blank"
-            class="view-btn">
-
-            👁 View Uploaded Brochure
-
-        </a>
-
-
-    </div>
-
-    <?php endif; ?>
+    </form>
 
 
 </div>
 
 
+</div>
+
+
+<script>
+
+const brochureForm =
+    document.getElementById(
+        "brochureForm"
+    );
+
+
+const brochureInput =
+    document.getElementById(
+        "brochure"
+    );
+
+
+const uploadButton =
+    document.getElementById(
+        "uploadButton"
+    );
+
+
+brochureForm.addEventListener(
+    "submit",
+    function(event)
+    {
+
+        if (
+            !brochureInput.files.length
+        ) {
+
+            event.preventDefault();
+
+            alert(
+                "Please select a brochure file."
+            );
+
+            return;
+        }
+
+
+        const file =
+            brochureInput.files[0];
+
+
+        const allowedExtensions = [
+            "pdf",
+            "jpg",
+            "jpeg",
+            "png"
+        ];
+
+
+        const extension =
+            file.name
+            .split(".")
+            .pop()
+            .toLowerCase();
+
+
+        if (
+            !allowedExtensions.includes(
+                extension
+            )
+        ) {
+
+            event.preventDefault();
+
+            alert(
+                "Only PDF, JPG, JPEG and PNG files are allowed."
+            );
+
+            return;
+        }
+
+
+        if (
+            file.size >
+            10 * 1024 * 1024
+        ) {
+
+            event.preventDefault();
+
+            alert(
+                "Brochure file size must not exceed 10 MB."
+            );
+
+            return;
+        }
+
+
+        uploadButton.disabled =
+            true;
+
+
+        uploadButton.textContent =
+            "Uploading brochure...";
+
+    }
+);
+
+</script>
+
+
 </body>
 
 </html>
+
+
+<?php
+
+$conn->close();
+
+?>

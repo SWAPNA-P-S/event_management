@@ -19,13 +19,13 @@ $stmt = $conn->prepare(
         c.status
      FROM registrations r
      JOIN events e
-     ON r.event_id = e.event_id
+        ON r.event_id = e.event_id
      JOIN attendance a
-     ON r.registration_id = a.registration_id
+        ON r.registration_id = a.registration_id
      LEFT JOIN certificates c
-     ON r.registration_id = c.registration_id
+        ON r.registration_id = c.registration_id
      WHERE r.user_id = ?
-     AND a.verification_status = 'verified'
+       AND a.verification_status = 'verified'
      ORDER BY e.event_date DESC"
 );
 
@@ -43,8 +43,7 @@ $result = $stmt->get_result();
 
     <meta charset="UTF-8">
 
-    <meta name="viewport"
-          content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>My Certificates - Event Hub</title>
 
@@ -57,157 +56,254 @@ $result = $stmt->get_result();
         }
 
         body {
-            font-family: Arial, sans-serif;
-            background: #f5f6fb;
-            color: #222;
+            font-family: Arial, Helvetica, sans-serif;
+            background: #F4F7FB;
+            color: #172033;
         }
 
+        /* HEADER */
+
         header {
-            background: #172554;
+            background: #0B1F3A;
             color: white;
             padding: 18px 40px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        .header-inner {
+            max-width: 1100px;
+            margin: auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
 
         .logo {
             font-size: 24px;
-            font-weight: bold;
+            font-weight: 700;
+            letter-spacing: 0.3px;
         }
+
+        .header-label {
+            font-size: 13px;
+            color: #DCE8F7;
+        }
+
+        /* PAGE */
 
         .page {
             min-height: calc(100vh - 70px);
-            padding: 40px 20px;
+            padding: 40px 20px 60px;
         }
 
         .container {
-            max-width: 900px;
+            max-width: 1000px;
             margin: auto;
         }
 
+        /* BACK */
+
         .back-link {
-            display: inline-block;
-            margin-bottom: 25px;
-            color: #263a8b;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            margin-bottom: 28px;
+            color: #1E4E8C;
             text-decoration: none;
             font-weight: 600;
+            font-size: 14px;
         }
 
-        h1 {
-            color: #172554;
+        .back-link:hover {
+            color: #0B1F3A;
+        }
+
+        /* PAGE TITLE */
+
+        .page-heading {
+            margin-bottom: 30px;
+        }
+
+        .page-heading h1 {
+            color: #0B1F3A;
             font-size: 32px;
             margin-bottom: 8px;
         }
 
         .subtitle {
-            color: #666;
-            margin-bottom: 30px;
+            color: #667085;
+            font-size: 15px;
+            line-height: 1.6;
         }
 
+        /* CERTIFICATE CARD */
+
         .certificate-card {
-            background: white;
+            background: #FFFFFF;
+            border: 1px solid #DCE4EF;
             border-radius: 14px;
-            padding: 30px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            padding: 28px;
+            margin-bottom: 22px;
+            box-shadow: 0 5px 18px rgba(11, 31, 58, 0.06);
         }
 
         .certificate-title {
-            border-bottom: 1px solid #eee;
             padding-bottom: 18px;
             margin-bottom: 20px;
+            border-bottom: 1px solid #E5EAF1;
         }
 
         .certificate-title h2 {
-            color: #1e3a8a;
+            color: #0B1F3A;
+            font-size: 21px;
             margin-bottom: 8px;
         }
+
+        .venue {
+            color: #667085;
+            font-size: 14px;
+        }
+
+        /* INFO */
 
         .certificate-info {
             display: grid;
             grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            margin-bottom: 20px;
+            gap: 14px;
+            margin-bottom: 22px;
         }
 
         .info-box {
-            background: #f8f9ff;
-            padding: 15px;
-            border-radius: 8px;
+            background: #F4F7FB;
+            border: 1px solid #E1E8F0;
+            padding: 15px 17px;
+            border-radius: 9px;
         }
 
         .info-box span {
             display: block;
-            color: #777;
-            font-size: 13px;
-            margin-bottom: 5px;
+            color: #667085;
+            font-size: 12px;
+            margin-bottom: 6px;
         }
 
         .info-box strong {
-            color: #333;
+            color: #172033;
+            font-size: 14px;
+            font-weight: 600;
         }
 
+        /* STATUS */
+
         .status {
-            display: inline-block;
-            padding: 7px 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 13px;
             border-radius: 20px;
             font-size: 13px;
             font-weight: 600;
-            background: #dcfce7;
-            color: #166534;
+            background: #E8F7EE;
+            color: #16703B;
+            border: 1px solid #CBEBD7;
         }
 
+        /* BUTTON */
+
         .certificate-btn {
-            display: inline-block;
-            margin-top: 10px;
-            padding: 12px 20px;
-            background: #263a8b;
-            color: white;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: 14px;
+            padding: 11px 20px;
+            background: #1E4E8C;
+            color: #FFFFFF;
             text-decoration: none;
             border-radius: 8px;
+            font-size: 14px;
             font-weight: 600;
+            transition: 0.2s ease;
         }
 
         .certificate-btn:hover {
-            background: #1e3075;
+            background: #0B1F3A;
         }
+
+        /* PENDING */
 
         .pending-box {
-            background: #fff7ed;
-            color: #9a3412;
-            padding: 15px;
-            border-radius: 8px;
-            margin-top: 15px;
+            background: #FFF8ED;
+            color: #9A5B12;
+            border: 1px solid #F2D7A6;
+            padding: 14px 16px;
+            border-radius: 9px;
+            font-size: 14px;
+            line-height: 1.5;
         }
 
+        /* NO CERTIFICATE */
+
         .no-certificate {
-            background: white;
-            padding: 35px;
+            background: #FFFFFF;
+            border: 1px solid #DCE4EF;
+            padding: 45px 30px;
             border-radius: 14px;
             text-align: center;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            box-shadow: 0 5px 18px rgba(11, 31, 58, 0.06);
+        }
+
+        .no-certificate-icon {
+            width: 58px;
+            height: 58px;
+            margin: 0 auto 16px;
+            border-radius: 50%;
+            background: #EAF2FB;
+            color: #1E4E8C;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
         }
 
         .no-certificate h2 {
-            color: #172554;
+            color: #0B1F3A;
+            font-size: 21px;
             margin-bottom: 10px;
         }
 
         .no-certificate p {
-            color: #666;
+            color: #667085;
             line-height: 1.6;
+            font-size: 14px;
         }
 
-        @media (max-width: 600px) {
+        /* MOBILE */
+
+        @media (max-width: 650px) {
 
             header {
                 padding: 16px 20px;
             }
 
-            .page {
-                padding: 30px 15px;
+            .header-inner {
+                align-items: flex-start;
+                gap: 10px;
             }
 
-            h1 {
+            .header-label {
+                display: none;
+            }
+
+            .page {
+                padding: 30px 15px 45px;
+            }
+
+            .page-heading h1 {
                 font-size: 27px;
+            }
+
+            .certificate-card {
+                padding: 22px;
             }
 
             .certificate-info {
@@ -224,8 +320,16 @@ $result = $stmt->get_result();
 
 <header>
 
-    <div class="logo">
-        Event Hub
+    <div class="header-inner">
+
+        <div class="logo">
+            Event Hub
+        </div>
+
+        <div class="header-label">
+            Student Portal
+        </div>
+
     </div>
 
 </header>
@@ -239,11 +343,17 @@ $result = $stmt->get_result();
             ← Back to Dashboard
         </a>
 
-        <h1>My Certificates</h1>
 
-        <p class="subtitle">
-            View certificates for events you have successfully attended.
-        </p>
+        <div class="page-heading">
+
+            <h1>My Certificates</h1>
+
+            <p class="subtitle">
+                View certificates for events you have successfully attended
+                and whose attendance has been verified.
+            </p>
+
+        </div>
 
 
         <?php
@@ -262,18 +372,14 @@ $result = $stmt->get_result();
 
                     <h2>
                         <?php
-                        echo htmlspecialchars(
-                            $event["event_name"]
-                        );
+                        echo htmlspecialchars($event["event_name"]);
                         ?>
                     </h2>
 
-                    <p>
+                    <p class="venue">
                         📍
                         <?php
-                        echo htmlspecialchars(
-                            $event["venue"]
-                        );
+                        echo htmlspecialchars($event["venue"]);
                         ?>
                     </p>
 
@@ -287,12 +393,24 @@ $result = $stmt->get_result();
                         <span>📅 Event Date</span>
 
                         <strong>
+
                             <?php
-                            echo date(
-                                "d F Y",
-                                strtotime($event["event_date"])
-                            );
+
+                            if (!empty($event["event_date"])) {
+
+                                echo date(
+                                    "d F Y",
+                                    strtotime($event["event_date"])
+                                );
+
+                            } else {
+
+                                echo "Not available";
+
+                            }
+
                             ?>
+
                         </strong>
 
                     </div>
@@ -303,12 +421,17 @@ $result = $stmt->get_result();
                         <span>📜 Certificate Type</span>
 
                         <strong>
+
                             <?php
+
                             echo htmlspecialchars(
-                                $event["certificate_type"]
-                                ?? "Participation"
+                                !empty($event["certificate_type"])
+                                    ? ucfirst($event["certificate_type"])
+                                    : "Participation"
                             );
+
                             ?>
+
                         </strong>
 
                     </div>
@@ -321,11 +444,15 @@ $result = $stmt->get_result();
                             <span>🔢 Certificate Number</span>
 
                             <strong>
+
                                 <?php
+
                                 echo htmlspecialchars(
                                     $event["certificate_number"]
                                 );
+
                                 ?>
+
                             </strong>
 
                         </div>
@@ -336,16 +463,24 @@ $result = $stmt->get_result();
                             <span>📅 Issued Date</span>
 
                             <strong>
+
                                 <?php
-                                echo $event["issued_date"]
-                                    ? date(
+
+                                if (!empty($event["issued_date"])) {
+
+                                    echo date(
                                         "d F Y",
-                                        strtotime(
-                                            $event["issued_date"]
-                                        )
-                                    )
-                                    : "Not issued";
+                                        strtotime($event["issued_date"])
+                                    );
+
+                                } else {
+
+                                    echo "Not issued";
+
+                                }
+
                                 ?>
+
                             </strong>
 
                         </div>
@@ -365,7 +500,7 @@ $result = $stmt->get_result();
 
                     <a
                         href="certificate_view.php?certificate_id=<?php
-                            echo $event["certificate_id"];
+                            echo (int)$event["certificate_id"];
                         ?>"
                         class="certificate-btn"
                     >
@@ -378,7 +513,7 @@ $result = $stmt->get_result();
                     <div class="pending-box">
 
                         📜 Your attendance has been verified.
-                        Certificate will be issued by the organizer.
+                        Your certificate will be issued by the organizer.
 
                     </div>
 
@@ -395,13 +530,17 @@ $result = $stmt->get_result();
 
             <div class="no-certificate">
 
+                <div class="no-certificate-icon">
+                    📜
+                </div>
+
                 <h2>
-                    📜 No Certificates Yet
+                    No Certificates Yet
                 </h2>
 
                 <p>
-                    Certificates will be available after you
-                    successfully attend and verify an event.
+                    Certificates will be available after you successfully
+                    attend an event and your attendance is verified.
                 </p>
 
             </div>
@@ -413,9 +552,6 @@ $result = $stmt->get_result();
 
 </main>
 
-</body>
-
-</html>
 
 <?php
 
@@ -423,3 +559,7 @@ $stmt->close();
 $conn->close();
 
 ?>
+
+</body>
+
+</html>

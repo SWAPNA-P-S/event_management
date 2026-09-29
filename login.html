@@ -1,42 +1,116 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
+
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
     <title>Event Hub</title>
 
-    <link rel="stylesheet" href="css/style.css">
+    <link
+        rel="stylesheet"
+        href="css/style.css"
+    >
+
 </head>
 
 <body>
+
     <div class="login-container">
 
-    <div class="login-box">
+        <div class="login-box">
 
-        <h1>College Event Hub</h1>
+            <h1>
+                College Event Hub
+            </h1>
 
-        <p class="subtitle">College Event Management System</p>
+            <p class="subtitle">
+                College Event Management System
+            </p>
 
-        <form action="login.php" method="POST">
 
-            <label for="email">Email</label>
-            <input type="email" id="email" name="email" placeholder="Enter your email" required>
+            <form
+                action="login.php"
+                method="POST"
+            >
 
-            <label for="password">Password</label>
-            <input type="password" id="password" name="password" placeholder="Enter your password" required>
+                <!-- Email -->
 
-            <button type="submit" class="login-btn">Login</button>
+                <label for="email">
+                    Email
+                </label>
 
-            <a href="forgot_password.php" class="forgot-password">
-                Forgot Password?
-            </a>
+                <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    placeholder="Enter your email"
+                    required
+                >
 
-        </form>
+
+                <!-- Password -->
+
+                <label for="password">
+                    Password
+                </label>
+
+                <input
+                    type="password"
+                    id="password"
+                    name="password"
+                    placeholder="Enter your password"
+                    required
+                >
+
+
+                <!-- Login Button -->
+
+                <button
+                    type="submit"
+                    class="login-btn"
+                >
+                    Login
+                </button>
+
+
+                <!-- Forgot Password -->
+
+                <a
+                    href="forgot_password.php"
+                    class="forgot-password"
+                >
+                    Forgot Password?
+                </a>
+
+            </form>
+
+
+            <!-- Register Option -->
+
+            <div class="register-option">
+
+                <p>
+
+                    Don't have an account?
+
+                    <a href="register.html">
+                        Register here
+                    </a>
+
+                </p>
+
+            </div>
+
+        </div>
 
     </div>
 
-</div>
-
 </body>
+
 </html>
